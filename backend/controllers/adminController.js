@@ -1,205 +1,93 @@
-const Theatre =
-require('../models/Theatre');
-
-const Show =
-require('../models/Show');
-
-
+const Theatre = require('../models/Theatre');
+const Show = require('../models/Show');
 
 // ADD THEATRE
-const addTheatre =
-async (req, res) => {
-
+const addTheatre = async (req, res) => {
   try {
-
-    const theatre =
-      await Theatre.create(
-        req.body
-      );
-
-    res.status(201).json(
-      theatre
-    );
-
+    const theatre = await Theatre.create(req.body);
+    res.status(201).json(theatre);
   } catch (error) {
-
-    res.status(500).json({
-
-      message:
-        error.message
-
-    });
-
+    res.status(500).json({ message: error.message });
   }
-
 };
-
-
 
 // GET THEATRES
-const getTheatres =
-async (req, res) => {
-
+const getTheatres = async (req, res) => {
   try {
-
-    const theatres =
-      await Theatre.find();
-
+    const theatres = await Theatre.find();
     res.json(theatres);
-
   } catch (error) {
-
-    res.status(500).json({
-
-      message:
-        error.message
-
-    });
-
+    res.status(500).json({ message: error.message });
   }
-
 };
 
-
+// DELETE THEATRE
+const deleteTheatre = async (req, res) => {
+  try {
+    const theatre = await Theatre.findByIdAndDelete(req.params.id);
+    if (!theatre) return res.status(404).json({ message: 'Theatre not found' });
+    res.json({ message: 'Theatre deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 // ADD SHOW WITH AUTO SEATS
-const addShow =
-async (req, res) => {
-
+const addShow = async (req, res) => {
   try {
+    const { movie, theatre, showTime, price } = req.body;
 
-    const {
-
-      movie,
-
-      theatre,
-
-      showTime,
-
-      price
-
-    } = req.body;
-
-    // AUTO GENERATE SEATS
+    // AUTO GENERATE SEATS (rows A-E, 10 seats each = 50 seats)
     const seats = [];
-
-    const rows = [
-
-      'A',
-
-      'B',
-
-      'C',
-
-      'D',
-
-      'E'
-
-    ];
-
+    const rows = ['A', 'B', 'C', 'D', 'E'];
     for (const row of rows) {
-
-      for (
-
-        let i = 1;
-
-        i <= 10;
-
-        i++
-
-      ) {
-
-        seats.push(
-
-          `${row}${i}`
-
-        );
-
+      for (let i = 1; i <= 10; i++) {
+        seats.push(`${row}${i}`);
       }
-
     }
 
-    // CREATE SHOW
-    const show =
-      await Show.create({
-
-        movie,
-
-        theatre,
-
-        showTime,
-
-        price,
-
-        seats,
-
-        bookedSeats: []
-
-      });
-
-    res.status(201).json({
-
-      message:
-        'Show added successfully',
-
-      show
-
+    const show = await Show.create({
+      movie,
+      theatre,
+      showTime,
+      price,
+      seats,
+      bookedSeats: []
     });
 
+    res.status(201).json({ message: 'Show added successfully', show });
   } catch (error) {
-
-    res.status(500).json({
-
-      message:
-        error.message
-
-    });
-
+    res.status(500).json({ message: error.message });
   }
-
 };
-
-
 
 // GET SHOWS
-const getShows =
-async (req, res) => {
-
+const getShows = async (req, res) => {
   try {
-
-    const shows =
-      await Show.find()
-
-      .populate('movie')
-
-      .populate('theatre');
-
+    const shows = await Show.find().populate('movie').populate('theatre');
     res.json(shows);
-
   } catch (error) {
-
-    res.status(500).json({
-
-      message:
-        error.message
-
-    });
-
+    res.status(500).json({ message: error.message });
   }
-
 };
 
-
+// DELETE SHOW
+const deleteShow = async (req, res) => {
+  try {
+    const show = await Show.findByIdAndDelete(req.params.id);
+    if (!show) return res.status(404).json({ message: 'Show not found' });
+    res.json({ message: 'Show deleted successfully' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
 // EXPORTS
 module.exports = {
-
   addTheatre,
-
   getTheatres,
-
+  deleteTheatre,
   addShow,
-
-  getShows
-
+  getShows,
+  deleteShow
 };

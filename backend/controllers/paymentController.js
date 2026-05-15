@@ -120,28 +120,15 @@ exports.verifyPayment = async (req, res) => {
     }
 
     // SAVE BOOKING
-    const booking =
-      await Booking.create({
-
-        user: userId,
-
-        movie:
-          existingShow.movie,
-
-        theatre:
-          existingShow.theatre,
-
-        show: showId,
-
-        seats,
-
-        totalAmount:
-          seats.length * 200,
-
-        bookingId:
-          uuidv4()
-
-      });
+    const booking = await Booking.create({
+      user: userId,
+      movie: existingShow.movie,
+      theatre: existingShow.theatre,
+      show: showId,
+      seats,
+      totalAmount: seats.length * (existingShow.price || 200),
+      bookingId: uuidv4()
+    });
 
     // UPDATE BOOKED SEATS
     // PREVENT DUPLICATE BOOKINGS

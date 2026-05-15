@@ -1,197 +1,129 @@
 import React from 'react';
-
-import {
-
-  useLocation,
-
-  useNavigate
-
-} from 'react-router-dom';
-
+import { useLocation, useNavigate } from 'react-router-dom';
 import QRCode from 'react-qr-code';
-
 import Navbar from '../components/Navbar';
 
 function Success() {
-
-  const location =
-    useLocation();
-
-  const navigate =
-    useNavigate();
-
-  const booking =
-    location.state?.booking;
+  const location = useLocation();
+  const navigate = useNavigate();
+  const booking = location.state?.booking;
 
   if (!booking) {
-
     return (
-      <h1>
-        No Booking Found
-      </h1>
+      <div style={{ background: '#0f172a', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div style={{ textAlign: 'center', color: 'white' }}>
+          <h1>No Booking Found</h1>
+          <button onClick={() => navigate('/home')} style={btnPrimary}>Go to Home</button>
+        </div>
+      </div>
     );
-
   }
 
-  const qrData = `
-
-Booking ID:
-${booking.bookingId}
-
-Seats:
-${booking.seats.join(', ')}
-
-Amount:
-₹${booking.totalAmount}
-
-`;
+  const qrData = JSON.stringify({
+    bookingId: booking.bookingId,
+    seats: booking.seats,
+    amount: booking.totalAmount
+  });
 
   return (
-
     <>
-
       <Navbar />
+      <div style={{
+        background: '#0f172a',
+        minHeight: '100vh',
+        color: 'white',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: '30px'
+      }}>
+        <div style={{
+          background: '#1e293b',
+          padding: '40px',
+          borderRadius: '20px',
+          width: '100%',
+          maxWidth: '500px',
+          textAlign: 'center',
+          border: '1px solid #334155'
+        }}>
+          {/* SUCCESS ICON */}
+          <div style={{ fontSize: '60px', marginBottom: '10px' }}>✅</div>
+          <h1 style={{ color: '#10b981', margin: '0 0 5px' }}>Booking Confirmed!</h1>
+          <p style={{ color: '#94a3b8', marginBottom: '25px' }}>Your tickets are ready</p>
 
-      <div
-        style={{
-          background: '#0f172a',
-          minHeight: '100vh',
-          color: 'white',
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: '30px'
-        }}
-      >
-
-        <div
-          style={{
-            background: '#1e293b',
-            padding: '40px',
-            borderRadius: '20px',
-            width: '500px',
-            textAlign: 'center'
-          }}
-        >
-
-          <h1
-            style={{
-              color: 'lime'
-            }}
-          >
-            Booking Confirmed
-          </h1>
-
-          <div
-            style={{
-              background: 'white',
-              padding: '20px',
-              marginTop: '20px',
-              display: 'inline-block'
-            }}
-          >
-
-            <QRCode
-              value={qrData}
-              size={180}
-            />
-
+          {/* QR CODE */}
+          <div style={{
+            background: 'white',
+            padding: '20px',
+            display: 'inline-block',
+            borderRadius: '12px',
+            marginBottom: '25px'
+          }}>
+            <QRCode value={qrData} size={180} />
           </div>
 
-          <p
-            style={{
-              marginTop: '25px'
-            }}
-          >
-            Booking ID:
-            {booking.bookingId}
-          </p>
+          {/* BOOKING DETAILS */}
+          <div style={{
+            background: '#0f172a',
+            borderRadius: '12px',
+            padding: '20px',
+            textAlign: 'left',
+            marginBottom: '25px'
+          }}>
+            <DetailRow label="Booking ID" value={booking.bookingId} mono />
+            <DetailRow label="Seats" value={booking.seats?.join(', ')} />
+            <DetailRow label="Amount" value={`₹${booking.totalAmount}`} />
+            {booking.movie?.title && <DetailRow label="Movie" value={booking.movie.title} />}
+            {booking.theatre?.name && <DetailRow label="Theatre" value={booking.theatre.name} />}
+          </div>
 
-          <p>
-            Seats:
-            {
-              booking.seats.join(', ')
-            }
-          </p>
-
-          <p>
-            Amount:
-            ₹ {booking.totalAmount}
-          </p>
-
-          <button
-
-            onClick={() =>
-              navigate('/bookings')
-            }
-
-            style={{
-
-              width: '100%',
-
-              padding: '15px',
-
-              marginTop: '30px',
-
-              background: '#ff004f',
-
-              border: 'none',
-
-              borderRadius: '10px',
-
-              color: 'white',
-
-              cursor: 'pointer',
-
-              fontSize: '16px'
-
-            }}
-
-          >
-            View My Bookings
-            <button
-
-  onClick={() =>
-    navigate('/home')
-  }
-
-  style={{
-
-    width: '100%',
-
-    padding: '15px',
-
-    marginTop: '15px',
-
-    background: '#111827',
-
-    border: 'none',
-
-    borderRadius: '10px',
-
-    color: 'white',
-
-    cursor: 'pointer',
-
-    fontSize: '16px'
-
-  }}
-
->
-
-  Go To Home
-
-</button>
-          </button>
-
+          {/* ACTION BUTTONS */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <button onClick={() => navigate('/bookings')} style={btnPrimary}>
+              🎟️ View My Bookings
+            </button>
+            <button onClick={() => navigate('/home')} style={btnSecondary}>
+              🏠 Go to Home
+            </button>
+          </div>
         </div>
-
       </div>
-
     </>
-
   );
-
 }
+
+function DetailRow({ label, value, mono }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid #1e293b' }}>
+      <span style={{ color: '#94a3b8', fontSize: '13px' }}>{label}</span>
+      <span style={{ color: 'white', fontSize: '13px', fontFamily: mono ? 'monospace' : 'inherit', maxWidth: '60%', textAlign: 'right', wordBreak: 'break-all' }}>
+        {value}
+      </span>
+    </div>
+  );
+}
+
+const btnPrimary = {
+  width: '100%',
+  padding: '14px',
+  background: '#ff004f',
+  border: 'none',
+  borderRadius: '10px',
+  color: 'white',
+  cursor: 'pointer',
+  fontSize: '16px',
+  fontWeight: 'bold'
+};
+
+const btnSecondary = {
+  width: '100%',
+  padding: '14px',
+  background: '#1e293b',
+  border: '1px solid #334155',
+  borderRadius: '10px',
+  color: 'white',
+  cursor: 'pointer',
+  fontSize: '16px'
+};
 
 export default Success;

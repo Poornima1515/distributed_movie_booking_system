@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import API from '../api';
+import React, { useState, useEffect } from 'react';
 import Navbar from '../components/Navbar';
-import { useNavigate } from 'react-router-dom';
+import API from '../api';
+import { useNavigate, useParams } from 'react-router-dom';
 
-function AddMovie() {
+function EditMovie() {
+  const { id } = useParams();
   const navigate = useNavigate();
   const [movie, setMovie] = useState({
     title: '',
@@ -14,28 +15,48 @@ function AddMovie() {
     poster: '',
     description: ''
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    const fetchMovie = async () => {
+      try {
+        const res = await API.get(`/movies/${id}`);
+        setMovie(res.data);
+      } catch (error) {
+        alert('Failed to load movie');
+        navigate('/admin');
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchMovie();
+  }, [id, navigate]);
 
   const handleChange = (e) => {
     setMovie({ ...movie, [e.target.name]: e.target.value });
   };
 
-  const addMovie = async () => {
-    if (!movie.title) {
-      alert('Movie title is required');
-      return;
-    }
-    setLoading(true);
+  const handleUpdate = async () => {
+    setSaving(true);
     try {
-      await API.post('/movies/add', movie);
-      alert('Movie Added Successfully!');
+      await API.put(`/movies/${id}`, movie);
+      alert('Movie updated successfully!');
       navigate('/admin');
     } catch (error) {
-      alert(error.response?.data?.message || 'Failed to add movie');
+      alert(error.response?.data?.message || 'Failed to update movie');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+
+  if (loading) {
+    return (
+      <div style={{ background: '#0f172a', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <h2 style={{ color: 'white' }}>Loading...</h2>
+      </div>
+    );
+  }
 
   const fields = ['title', 'language', 'genre', 'duration', 'rating', 'poster'];
 
@@ -44,34 +65,41 @@ function AddMovie() {
       <Navbar />
       <div style={{ background: '#0f172a', minHeight: '100vh', padding: '30px', color: 'white' }}>
         {/* BACK BUTTON */}
-        <button onClick={() => navigate('/admin')} style={backBtnStyle}>
+        <button
+          onClick={() => navigate('/admin')}
+          style={backBtnStyle}
+        >
           ← Back to Dashboard
         </button>
 
-        <h1 style={{ marginTop: '20px', marginBottom: '5px' }}>Add Movie</h1>
-        <p style={{ color: '#94a3b8', marginBottom: '30px' }}>Fill in the details to add a new movie</p>
+        <h1 style={{ marginTop: '20px', marginBottom: '5px' }}>Edit Movie</h1>
+        <p style={{ color: '#94a3b8', marginBottom: '30px' }}>Update movie details below</p>
 
         <div style={{ maxWidth: '520px' }}>
           {fields.map((key) => (
             <div key={key} style={{ marginBottom: '16px' }}>
-              <label style={labelStyle}>{key.charAt(0).toUpperCase() + key.slice(1)}</label>
+              <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '6px', textTransform: 'capitalize' }}>
+                {key}
+              </label>
               <input
                 name={key}
-                value={movie[key]}
-                placeholder={`Enter ${key}`}
+                value={movie[key] || ''}
                 onChange={handleChange}
+                placeholder={key}
                 style={inputStyle}
               />
             </div>
           ))}
 
-          <div style={{ marginBottom: '24px' }}>
-            <label style={labelStyle}>Description</label>
+          <div style={{ marginBottom: '16px' }}>
+            <label style={{ display: 'block', color: '#94a3b8', fontSize: '13px', marginBottom: '6px' }}>
+              Description
+            </label>
             <textarea
               name="description"
-              value={movie.description}
-              placeholder="Enter movie description..."
+              value={movie.description || ''}
               onChange={handleChange}
+              placeholder="Movie description..."
               rows={4}
               style={{ ...inputStyle, resize: 'vertical' }}
             />
@@ -92,23 +120,34 @@ function AddMovie() {
 
           <div style={{ display: 'flex', gap: '12px' }}>
             <button
-              onClick={addMovie}
-              disabled={loading}
+              onClick={handleUpdate}
+              disabled={saving}
               style={{
                 flex: 1,
                 padding: '14px',
-                background: loading ? '#64748b' : '#ff004f',
+                background: saving ? '#64748b' : '#ff004f',
                 border: 'none',
                 borderRadius: '10px',
                 color: 'white',
                 fontSize: '16px',
                 fontWeight: 'bold',
-                cursor: loading ? 'not-allowed' : 'pointer'
+                cursor: saving ? 'not-allowed' : 'pointer'
               }}
             >
-              {loading ? 'Adding...' : '🎬 Add Movie'}
+              {saving ? 'Saving...' : '💾 Save Changes'}
             </button>
-            <button onClick={() => navigate('/admin')} style={cancelBtnStyle}>
+            <button
+              onClick={() => navigate('/admin')}
+              style={{
+                padding: '14px 20px',
+                background: '#1e293b',
+                border: '1px solid #334155',
+                borderRadius: '10px',
+                color: 'white',
+                fontSize: '16px',
+                cursor: 'pointer'
+              }}
+            >
               Cancel
             </button>
           </div>
@@ -130,13 +169,6 @@ const inputStyle = {
   boxSizing: 'border-box'
 };
 
-const labelStyle = {
-  display: 'block',
-  color: '#94a3b8',
-  fontSize: '13px',
-  marginBottom: '6px'
-};
-
 const backBtnStyle = {
   padding: '10px 18px',
   background: '#1e293b',
@@ -148,14 +180,4 @@ const backBtnStyle = {
   fontWeight: 'bold'
 };
 
-const cancelBtnStyle = {
-  padding: '14px 20px',
-  background: '#1e293b',
-  border: '1px solid #334155',
-  borderRadius: '10px',
-  color: 'white',
-  fontSize: '16px',
-  cursor: 'pointer'
-};
-
-export default AddMovie;
+export default EditMovie;

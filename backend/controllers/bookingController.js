@@ -299,30 +299,27 @@ const unlockSeat = async (req, res) => {
 };
 
 const getBookings = async (req, res) => {
-
   try {
-
-    const bookings =
-      await Booking.find()
-
+    const bookings = await Booking.find()
       .populate('movie')
-
       .populate('theatre')
-
       .populate('show');
-
     res.json(bookings);
-
   } catch (error) {
-
-    res.status(500).json({
-
-      message: error.message
-
-    });
-
+    res.status(500).json({ message: error.message });
   }
+};
 
+const getUserBookings = async (req, res) => {
+  try {
+    const bookings = await Booking.find({ user: req.params.userId })
+      .populate('movie')
+      .populate('theatre')
+      .populate('show');
+    res.json(bookings);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 const getLockedSeats = async (req, res) => {
 
@@ -382,14 +379,10 @@ const getLockedSeats = async (req, res) => {
 };
 
 module.exports = {
-
   lockSeats,
-   unlockSeat,
-
+  unlockSeat,
   confirmBooking,
-
   getBookings,
-
+  getUserBookings,
   getLockedSeats
-
 };
