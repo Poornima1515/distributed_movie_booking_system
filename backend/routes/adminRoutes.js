@@ -6,6 +6,7 @@ const {
   deleteTheatre,
   addShow,
   getShows,
+  getShowById,
   deleteShow
 } = require('../controllers/adminController');
 
@@ -15,6 +16,7 @@ router.delete('/theatre/:id', deleteTheatre);
 
 router.post('/show', addShow);
 router.get('/shows', getShows);
+router.get('/show/:id', getShowById);
 router.delete('/show/:id', deleteShow);
 
 module.exports = router;

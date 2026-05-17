@@ -71,6 +71,17 @@ const getShows = async (req, res) => {
   }
 };
 
+// GET SINGLE SHOW BY ID
+const getShowById = async (req, res) => {
+  try {
+    const show = await Show.findById(req.params.id).populate('movie').populate('theatre');
+    if (!show) return res.status(404).json({ message: 'Show not found' });
+    res.json(show);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // DELETE SHOW
 const deleteShow = async (req, res) => {
   try {
@@ -89,5 +100,6 @@ module.exports = {
   deleteTheatre,
   addShow,
   getShows,
+  getShowById,
   deleteShow
 };

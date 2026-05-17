@@ -16,7 +16,10 @@ const showSchema = new mongoose.Schema({
 
   price: Number,
 
-  seats: [String],
+  seats: {
+    type: [String],
+    default: []
+  },
 
   bookedSeats: {
     type: [String],
