@@ -1,4 +1,4 @@
-const express = require('express');
+﻿const express = require('express');
 const router = express.Router();
 const {
   addTheatre,
@@ -6,7 +6,9 @@ const {
   deleteTheatre,
   addShow,
   getShows,
-  deleteShow
+  getShowById,
+  deleteShow,
+  migrateSeats
 } = require('../controllers/adminController');
 
 router.post('/theatre', addTheatre);
@@ -15,6 +17,8 @@ router.delete('/theatre/:id', deleteTheatre);
 
 router.post('/show', addShow);
 router.get('/shows', getShows);
+router.get('/show/:id', getShowById);
 router.delete('/show/:id', deleteShow);
+router.post('/migrate-seats', migrateSeats);
 
 module.exports = router;

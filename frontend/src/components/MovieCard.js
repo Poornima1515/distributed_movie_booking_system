@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 
 import { useNavigate } from 'react-router-dom';
 
@@ -10,7 +10,7 @@ function MovieCard({ movie }) {
 
     <div
       className="bg-slate-800 rounded-2xl overflow-hidden shadow-xl hover:scale-105 transition cursor-pointer"
-      onClick={() => navigate(`/movie/${movie.id}`)}
+      onClick={() => navigate(`/movie/${movie._id}`)}
     >
 
       <img

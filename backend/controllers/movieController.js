@@ -1,4 +1,4 @@
-const Movie = require('../models/Movie');
+﻿const Movie = require('../models/Movie');
 
 const addMovie = async (req, res) => {
   try {
@@ -54,10 +54,46 @@ const deleteMovie = async (req, res) => {
   }
 };
 
-module.exports = {
-  addMovie,
-  getMovies,
-  getMovieById,
-  updateMovie,
-  deleteMovie
+
+// MOVIE RECOMMENDATIONS (genre + collaborative)
+const getRecommendations = async (req, res) => {
+  try {
+    const { movieId } = req.params;
+    const Booking = require('../models/Booking');
+
+    const targetMovie = await Movie.findById(movieId);
+    if (!targetMovie) return res.status(404).json({ message: 'Movie not found' });
+
+    // 1. Find users who booked this movie
+    const bookingsForMovie = await Booking.find({ movie: movieId }).distinct('user');
+
+    // 2. Find what else those users booked
+    const coBookings = await Booking.find({
+      user: { $in: bookingsForMovie },
+      movie: { $ne: movieId }
+    }).distinct('movie');
+
+    // 3. Genre-based fallback
+    const genreMovies = await Movie.find({
+      _id: { $ne: movieId },
+      genre: { $regex: targetMovie.genre?.split(' ')[0] || '', $options: 'i' }
+    }).limit(6);
+
+    // 4. Merge: collaborative first, then genre
+    const collabMovies = coBookings.length > 0
+      ? await Movie.find({ _id: { $in: coBookings, $ne: movieId } }).limit(4)
+      : [];
+
+    const seen = new Set(collabMovies.map(m => m._id.toString()));
+    const combined = [
+      ...collabMovies,
+      ...genreMovies.filter(m => !seen.has(m._id.toString()))
+    ].slice(0, 6);
+
+    res.json({ recommendations: combined, basedOn: collabMovies.length > 0 ? 'collaborative' : 'genre' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
+
+module.exports = { addMovie, getMovies, getMovieById, updateMovie, deleteMovie, getRecommendations };

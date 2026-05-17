@@ -1,4 +1,4 @@
-const Theatre = require('../models/Theatre');
+﻿const Theatre = require('../models/Theatre');
 const Show = require('../models/Show');
 
 // ADD THEATRE
@@ -71,6 +71,17 @@ const getShows = async (req, res) => {
   }
 };
 
+// GET SINGLE SHOW BY ID
+const getShowById = async (req, res) => {
+  try {
+    const show = await Show.findById(req.params.id).populate('movie').populate('theatre');
+    if (!show) return res.status(404).json({ message: 'Show not found' });
+    res.json(show);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // DELETE SHOW
 const deleteShow = async (req, res) => {
   try {
@@ -82,6 +93,30 @@ const deleteShow = async (req, res) => {
   }
 };
 
+
+// MIGRATE: Fill seats for all shows that have an empty seats array
+const migrateSeats = async (req, res) => {
+  try {
+    const rows = ['A', 'B', 'C', 'D', 'E'];
+    const defaultSeats = [];
+    for (const row of rows) {
+      for (let i = 1; i <= 10; i++) {
+        defaultSeats.push(`${row}${i}`);
+      }
+    }
+
+    const result = await Show.updateMany(
+      { seats: { $size: 0 } },
+      { $set: { seats: defaultSeats } }
+    );
+
+    res.json({
+      message: `Migration complete. ${result.modifiedCount} show(s) updated with 50 seats.`
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 // EXPORTS
 module.exports = {
   addTheatre,
@@ -89,5 +124,7 @@ module.exports = {
   deleteTheatre,
   addShow,
   getShows,
-  deleteShow
+  getShowById,
+  deleteShow,
+  migrateSeats
 };

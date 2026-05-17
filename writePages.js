@@ -1,4 +1,8 @@
+const fs = require('fs');
+const base = 'D:/DS Project/distributed_movie_booking_system/frontend/src/pages/';
 
+// ── HOME ──
+fs.writeFileSync(base + 'Home.js', `
 import React, { useEffect, useState } from 'react';
 import Navbar from '../components/Navbar';
 import { useNavigate } from 'react-router-dom';
@@ -102,3 +106,5 @@ function MovieCard({ movie, colors, hovered, onHover, onClick }) {
 }
 
 export default Home;
+`);
+console.log('Home.js done');

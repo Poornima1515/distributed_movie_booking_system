@@ -1,15 +1,20 @@
-import React, { useEffect, useState, useCallback } from 'react';
+﻿import React, { useEffect, useState, useCallback } from 'react';
 import API from '../api';
 import Navbar from '../components/Navbar';
 import QRCode from 'react-qr-code';
 import { useNavigate } from 'react-router-dom';
+import { io } from 'socket.io-client';
+import { useTheme } from '../context/ThemeContext';
+
+const socket = io('http://localhost:5000');
 
 function Bookings() {
   const [bookings, setBookings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
+  const [cancellingId, setCancellingId] = useState(null);
   const navigate = useNavigate();
-
+  const { colors } = useTheme();
   const user = JSON.parse(localStorage.getItem('user'));
 
   const fetchBookings = useCallback(async () => {
@@ -24,134 +29,192 @@ function Bookings() {
     }
   }, [user._id]);
 
+  useEffect(() => { fetchBookings(); }, [fetchBookings]);
+
+  // Listen for seat reopened events to refresh
   useEffect(() => {
-    fetchBookings();
+    socket.on('seatReopened', () => fetchBookings());
+    return () => socket.off('seatReopened');
   }, [fetchBookings]);
 
-  const toggleQR = (id) => {
-    setExpandedId(expandedId === id ? null : id);
+  const toggleQR = (id) => setExpandedId(expandedId === id ? null : id);
+
+  const handleCancel = async (booking) => {
+    if (!window.confirm(`Cancel booking for ${booking.movie?.title}?\nYou will receive a 75% refund of ₹${Math.round(booking.totalAmount * 0.75)}.`)) return;
+    setCancellingId(booking._id);
+    try {
+      const res = await API.patch(`/bookings/cancel/${booking._id}`);
+      // Emit socket event so seats reopen in real-time
+      socket.emit('bookingCancelled', {
+        showId: booking.show?._id || booking.show,
+        seats: booking.seats,
+        userName: user.name,
+        movieTitle: booking.movie?.title,
+        theatreName: booking.theatre?.name
+      });
+      alert(`Booking cancelled. Refund of ₹${res.data.refundAmount} will be processed within 5-7 business days.`);
+      fetchBookings();
+    } catch (error) {
+      alert(error.response?.data?.message || 'Cancellation failed');
+    } finally {
+      setCancellingId(null);
+    }
   };
+
+  const handleDownloadPDF = async (booking) => {
+    try {
+      const res = await fetch(`http://localhost:5000/api/payment/ticket/${booking._id}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (!res.ok) throw new Error('Failed to download');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `CineVerse-Ticket-${booking.bookingId?.slice(0, 8)}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      alert('Could not download ticket. Try again.');
+    }
+  };
+
+  const confirmed = bookings.filter(b => b.status !== 'CANCELLED');
+  const cancelled = bookings.filter(b => b.status === 'CANCELLED');
 
   return (
     <>
       <Navbar />
-      <div style={{ minHeight: '100vh', background: '#0f172a', color: 'white', padding: '30px' }}>
-
+      <div style={{ minHeight: '100vh', background: colors.bg, color: colors.text, padding: '30px', transition: 'background 0.3s' }}>
         {/* HEADER */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '30px' }}>
           <div>
-            <h1 style={{ margin: 0 }}>My Bookings</h1>
-            <p style={{ color: '#94a3b8', margin: '5px 0 0' }}>
-              {bookings.length} booking{bookings.length !== 1 ? 's' : ''} found
+            <h1 style={{ margin: 0, fontSize: '28px', fontWeight: '900', color: colors.text }}>🎟️ My Bookings</h1>
+            <p style={{ color: '#94a3b8', margin: '5px 0 0', fontSize: '14px' }}>
+              {confirmed.length} active · {cancelled.length} cancelled
             </p>
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
-            <button onClick={fetchBookings} style={refreshBtnStyle}>
-              🔄 Refresh
-            </button>
-            <button onClick={() => navigate('/home')} style={backBtnStyle}>
-              ← Home
-            </button>
+            <button onClick={fetchBookings} style={refreshBtn}>🔄 Refresh</button>
+            <button onClick={() => navigate('/home')} style={backBtn}>← Home</button>
           </div>
         </div>
 
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '60px', color: '#94a3b8' }}>
+          <div style={{ textAlign: 'center', padding: '80px', color: '#94a3b8' }}>
+            <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
             <p style={{ fontSize: '18px' }}>Loading bookings...</p>
           </div>
         ) : bookings.length === 0 ? (
-          <div style={{
-            background: '#1e293b',
-            borderRadius: '16px',
-            padding: '60px',
-            textAlign: 'center',
-            border: '1px solid #334155'
-          }}>
-            <p style={{ fontSize: '48px', marginBottom: '10px' }}>🎟️</p>
-            <h2 style={{ color: '#94a3b8' }}>No bookings yet</h2>
+          <div style={{ background: '#111827', borderRadius: '20px', padding: '60px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.06)' }}>
+            <p style={{ fontSize: '56px', marginBottom: '12px' }}>��️</p>
+            <h2 style={{ color: '#94a3b8', fontWeight: '700' }}>No bookings yet</h2>
             <p style={{ color: '#64748b' }}>Book your first movie ticket!</p>
-            <button onClick={() => navigate('/home')} style={{ ...btnPrimary, marginTop: '20px', width: 'auto', padding: '12px 30px' }}>
+            <button onClick={() => navigate('/home')} style={{ ...primaryBtn, marginTop: '20px', width: 'auto', padding: '12px 30px' }}>
               Browse Movies
             </button>
           </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             {bookings.map((booking) => {
-              const qrData = JSON.stringify({
-                bookingId: booking.bookingId,
-                seats: booking.seats,
-                amount: booking.totalAmount
-              });
+              const isCancelled = booking.status === 'CANCELLED';
+              const qrData = JSON.stringify({ bookingId: booking.bookingId, seats: booking.seats, amount: booking.totalAmount });
               const isExpanded = expandedId === booking._id;
+              const isCancelling = cancellingId === booking._id;
 
               return (
                 <div key={booking._id} style={{
-                  background: '#1e293b',
-                  borderRadius: '16px',
+                  background: '#111827',
+                  borderRadius: '20px',
                   padding: '24px',
-                  border: '1px solid #334155'
+                  border: `1px solid ${isCancelled ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.06)'}`,
+                  opacity: isCancelled ? 0.75 : 1,
+                  transition: 'all 0.2s'
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
-                    {/* LEFT: BOOKING INFO */}
+                    {/* LEFT */}
                     <div style={{ flex: 1, minWidth: '200px' }}>
-                      <h2 style={{ margin: '0 0 8px', color: 'white' }}>
-                        🎬 {booking.movie?.title || 'Unknown Movie'}
-                      </h2>
-                      <p style={{ color: '#94a3b8', margin: '4px 0', fontSize: '14px' }}>
-                        🏛️ {booking.theatre?.name || 'Unknown Theatre'}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                        <h2 style={{ margin: 0, fontSize: '18px', fontWeight: '800', color: 'white' }}>
+                          🎬 {booking.movie?.title || 'Unknown Movie'}
+                        </h2>
+                        <span style={{
+                          background: isCancelled ? 'rgba(239,68,68,0.15)' : 'rgba(16,185,129,0.15)',
+                          border: `1px solid ${isCancelled ? 'rgba(239,68,68,0.4)' : 'rgba(16,185,129,0.4)'}`,
+                          color: isCancelled ? '#ef4444' : '#10b981',
+                          padding: '3px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: '700'
+                        }}>
+                          {isCancelled ? '✕ CANCELLED' : '✓ CONFIRMED'}
+                        </span>
+                      </div>
+                      <p style={{ color: '#94a3b8', margin: '4px 0', fontSize: '13px' }}>🏛️ {booking.theatre?.name || 'Unknown Theatre'}</p>
+                      <p style={{ color: '#94a3b8', margin: '4px 0', fontSize: '13px' }}>🕐 {booking.show?.showTime || 'N/A'}</p>
+                      <p style={{ color: '#94a3b8', margin: '4px 0', fontSize: '13px' }}>
+                        💺 Seats: <span style={{ color: 'white', fontWeight: '600' }}>{booking.seats?.join(', ')}</span>
                       </p>
-                      <p style={{ color: '#94a3b8', margin: '4px 0', fontSize: '14px' }}>
-                        💺 Seats: <span style={{ color: 'white' }}>{booking.seats?.join(', ')}</span>
+                      <p style={{ color: '#94a3b8', margin: '4px 0', fontSize: '13px' }}>
+                        💰 Amount: <span style={{ color: '#10b981', fontWeight: '700' }}>₹{booking.totalAmount}</span>
+                        {isCancelled && booking.refundAmount > 0 && (
+                          <span style={{ color: '#f59e0b', marginLeft: '8px', fontSize: '12px' }}>
+                            (Refund: ₹{booking.refundAmount})
+                          </span>
+                        )}
                       </p>
-                      <p style={{ color: '#94a3b8', margin: '4px 0', fontSize: '14px' }}>
-                        💰 Amount: <span style={{ color: '#10b981', fontWeight: 'bold' }}>₹{booking.totalAmount}</span>
-                      </p>
-                      <p style={{ color: '#64748b', margin: '4px 0', fontSize: '12px', fontFamily: 'monospace' }}>
+                      <p style={{ color: '#334155', margin: '4px 0', fontSize: '11px', fontFamily: 'monospace' }}>
                         ID: {booking.bookingId}
                       </p>
                     </div>
 
-                    {/* RIGHT: STATUS + QR TOGGLE */}
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '10px' }}>
-                      <span style={{
-                        background: booking.paymentStatus === 'SUCCESS' ? '#10b981' : '#ef4444',
-                        padding: '4px 12px',
-                        borderRadius: '20px',
-                        fontSize: '12px',
-                        fontWeight: 'bold'
-                      }}>
-                        {booking.paymentStatus || 'SUCCESS'}
-                      </span>
-                      <button
-                        onClick={() => toggleQR(booking._id)}
-                        style={{
-                          padding: '8px 16px',
-                          background: isExpanded ? '#334155' : '#0ea5e9',
-                          border: 'none',
-                          borderRadius: '8px',
-                          color: 'white',
-                          cursor: 'pointer',
-                          fontSize: '13px',
-                          fontWeight: 'bold'
-                        }}
-                      >
-                        {isExpanded ? '🔼 Hide QR' : '📱 Show QR'}
-                      </button>
+                    {/* RIGHT: ACTIONS */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'flex-end' }}>
+                      {!isCancelled && (
+                        <>
+                          <button onClick={() => toggleQR(booking._id)} style={{
+                            padding: '8px 14px', background: isExpanded ? '#1e293b' : 'rgba(14,165,233,0.15)',
+                            border: `1px solid ${isExpanded ? '#334155' : 'rgba(14,165,233,0.4)'}`,
+                            borderRadius: '8px', color: isExpanded ? '#94a3b8' : '#0ea5e9',
+                            cursor: 'pointer', fontSize: '12px', fontWeight: '700'
+                          }}>
+                            {isExpanded ? '🔼 Hide QR' : '📱 Show QR'}
+                          </button>
+                          <button onClick={() => handleDownloadPDF(booking)} style={{
+                            padding: '8px 14px', background: 'rgba(99,102,241,0.15)',
+                            border: '1px solid rgba(99,102,241,0.4)',
+                            borderRadius: '8px', color: '#818cf8',
+                            cursor: 'pointer', fontSize: '12px', fontWeight: '700'
+                          }}>
+                            📄 Download PDF
+                          </button>
+                          <button
+                            onClick={() => handleCancel(booking)}
+                            disabled={isCancelling}
+                            style={{
+                              padding: '8px 14px', background: 'rgba(239,68,68,0.1)',
+                              border: '1px solid rgba(239,68,68,0.3)',
+                              borderRadius: '8px', color: '#ef4444',
+                              cursor: isCancelling ? 'not-allowed' : 'pointer',
+                              fontSize: '12px', fontWeight: '700', opacity: isCancelling ? 0.6 : 1
+                            }}>
+                            {isCancelling ? '⏳ Cancelling...' : '✕ Cancel'}
+                          </button>
+                        </>
+                      )}
+                      {isCancelled && (
+                        <span style={{ color: '#64748b', fontSize: '12px' }}>
+                          Cancelled {booking.cancelledAt ? new Date(booking.cancelledAt).toLocaleDateString('en-IN') : ''}
+                        </span>
+                      )}
                     </div>
                   </div>
 
-                  {/* QR CODE PANEL */}
-                  {isExpanded && (
+                  {/* QR PANEL */}
+                  {isExpanded && !isCancelled && (
                     <div style={{
-                      marginTop: '20px',
-                      paddingTop: '20px',
-                      borderTop: '1px solid #334155',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '12px'
+                      marginTop: '20px', paddingTop: '20px',
+                      borderTop: '1px solid rgba(255,255,255,0.06)',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px'
                     }}>
-                      <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>Scan at the theatre entrance</p>
+                      <p style={{ color: '#94a3b8', fontSize: '13px', margin: 0 }}>📱 Scan at the theatre entrance</p>
                       <div style={{ background: 'white', padding: '16px', borderRadius: '12px' }}>
                         <QRCode value={qrData} size={160} />
                       </div>
@@ -167,37 +230,8 @@ function Bookings() {
   );
 }
 
-const btnPrimary = {
-  background: '#ff004f',
-  border: 'none',
-  borderRadius: '10px',
-  color: 'white',
-  cursor: 'pointer',
-  fontSize: '15px',
-  fontWeight: 'bold',
-  padding: '10px 20px'
-};
-
-const refreshBtnStyle = {
-  padding: '10px 16px',
-  background: '#1e293b',
-  border: '1px solid #334155',
-  borderRadius: '10px',
-  color: 'white',
-  cursor: 'pointer',
-  fontSize: '14px',
-  fontWeight: 'bold'
-};
-
-const backBtnStyle = {
-  padding: '10px 16px',
-  background: '#1e293b',
-  border: '1px solid #334155',
-  borderRadius: '10px',
-  color: 'white',
-  cursor: 'pointer',
-  fontSize: '14px',
-  fontWeight: 'bold'
-};
+const primaryBtn = { background: '#ff004f', border: 'none', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '15px', fontWeight: '700', padding: '10px 20px' };
+const refreshBtn = { padding: '10px 16px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '14px', fontWeight: '600' };
+const backBtn = { padding: '10px 16px', background: '#111827', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '10px', color: 'white', cursor: 'pointer', fontSize: '14px', fontWeight: '600' };
 
 export default Bookings;

@@ -1,19 +1,24 @@
-module.exports = (io) => {
+﻿module.exports = (io) => {
   io.on('connection', (socket) => {
     console.log('User Connected:', socket.id);
 
-    // JOIN SHOW ROOM for isolated real-time sync
     socket.on('joinShow', (showId) => {
       socket.join(showId);
-      console.log(`Socket ${socket.id} joined show room: ${showId}`);
     });
 
     socket.on('leaveShow', (showId) => {
       socket.leave(showId);
     });
 
+    socket.on('joinAdmin', () => {
+      socket.join('admin-room');
+    });
+
+    socket.on('leaveAdmin', () => {
+      socket.leave('admin-room');
+    });
+
     socket.on('seatLocked', (data) => {
-      // Broadcast to all others in the same show room
       socket.to(data.showId).emit('seatLocked', data);
     });
 
@@ -23,6 +28,26 @@ module.exports = (io) => {
 
     socket.on('bookingConfirmed', (data) => {
       socket.to(data.showId).emit('bookingConfirmed', data);
+      io.to('admin-room').emit('newBookingActivity', {
+        type: 'BOOKING',
+        userName: data.userName || 'A user',
+        seats: data.seats,
+        movieTitle: data.movieTitle || 'a movie',
+        theatreName: data.theatreName || '',
+        timestamp: new Date().toISOString()
+      });
+    });
+
+    socket.on('bookingCancelled', (data) => {
+      socket.to(data.showId).emit('seatReopened', data);
+      io.to('admin-room').emit('newBookingActivity', {
+        type: 'CANCELLATION',
+        userName: data.userName || 'A user',
+        seats: data.seats,
+        movieTitle: data.movieTitle || 'a movie',
+        theatreName: data.theatreName || '',
+        timestamp: new Date().toISOString()
+      });
     });
 
     socket.on('disconnect', () => {

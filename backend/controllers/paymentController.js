@@ -1,184 +1,104 @@
-const razorpay = require("../config/razorpay");
+﻿const razorpay = require("../config/razorpay");
 const crypto = require("crypto");
+const Booking = require("../models/Booking");
+const Show = require("../models/Show");
+const Movie = require("../models/Movie");
+const Theatre = require("../models/Theatre");
+const User = require("../models/User");
+const redis = require("../config/redis");
+const { v4: uuidv4 } = require("uuid");
+const { sendTicketEmail } = require("../utils/emailService");
 
-const Booking =
-  require("../models/Booking");
-
-const Show =
-  require("../models/Show");
-
-const redis =
-  require("../config/redis");
-
-const { v4: uuidv4 } =
-  require("uuid");
 // CREATE ORDER
 exports.createOrder = async (req, res) => {
-
-    try {
-
-        const { amount } = req.body;
-
-        const options = {
-            amount: amount * 100,
-            currency: "INR",
-            receipt: `receipt_${Date.now()}`
-        };
-
-        const order =
-            await razorpay.orders.create(options);
-
-        res.status(200).json(order);
-
-    } catch (error) {
-
-        res.status(500).json({
-            message: error.message
-        });
-    }
+  try {
+    const { amount } = req.body;
+    const order = await razorpay.orders.create({
+      amount: amount * 100,
+      currency: "INR",
+      receipt: `receipt_${Date.now()}`
+    });
+    res.status(200).json(order);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
 
-
-
-
-// VERIFY PAYMENT
+// VERIFY PAYMENT + SAVE BOOKING + SEND EMAIL
 exports.verifyPayment = async (req, res) => {
-
   try {
-
-    const {
-
-      razorpay_order_id,
-
-      razorpay_payment_id,
-
-      razorpay_signature,
-
-      seats,
-
-      showId,
-
-      userId
-
-    } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, seats, showId, userId } = req.body;
 
     // VERIFY SIGNATURE
-    const body =
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
 
-      razorpay_order_id +
-
-      "|" +
-
-      razorpay_payment_id;
-
-    const expectedSignature =
-
-      crypto
-
-        .createHmac(
-
-          "sha256",
-
-          process.env.RAZORPAY_KEY_SECRET
-
-        )
-
-        .update(body.toString())
-
-        .digest("hex");
-
-    const isAuthentic =
-
-      expectedSignature ===
-
-      razorpay_signature;
-
-    if (!isAuthentic) {
-
-      return res.status(400).json({
-
-        success: false,
-
-        message: "Invalid payment"
-
-      });
-
+    if (expectedSignature !== razorpay_signature) {
+      return res.status(400).json({ success: false, message: "Invalid payment signature" });
     }
 
-    // GET SHOW
-    const existingShow =
-      await Show.findById(showId);
+    const existingShow = await Show.findById(showId).populate('movie').populate('theatre');
+    if (!existingShow) return res.status(404).json({ message: "Show not found" });
 
-    if (!existingShow) {
-
-      return res.status(404).json({
-
-        message: "Show not found"
-
-      });
-
-    }
+    const user = await User.findById(userId);
 
     // SAVE BOOKING
     const booking = await Booking.create({
       user: userId,
-      movie: existingShow.movie,
-      theatre: existingShow.theatre,
+      movie: existingShow.movie._id,
+      theatre: existingShow.theatre._id,
       show: showId,
       seats,
       totalAmount: seats.length * (existingShow.price || 200),
-      bookingId: uuidv4()
+      bookingId: uuidv4(),
+      userEmail: user?.email || '',
+      status: 'CONFIRMED'
     });
 
-    // UPDATE BOOKED SEATS
-    // PREVENT DUPLICATE BOOKINGS
-const uniqueSeats = [
-
-  ...new Set([
-
-    ...existingShow.bookedSeats,
-
-    ...seats
-
-  ])
-
-];
-
-existingShow.bookedSeats =
-  uniqueSeats;
-
-await existingShow.save();
+    // UPDATE BOOKED SEATS (prevent duplicates)
+    existingShow.bookedSeats = [...new Set([...existingShow.bookedSeats, ...seats])];
+    await existingShow.save();
 
     // REMOVE REDIS LOCKS
     for (const seat of seats) {
-
-      const lockKey =
-
-        `lock:${showId}:${seat}`;
-
-      await redis.del(lockKey);
-
+      await redis.del(`lock:${showId}:${seat}`);
     }
 
-    res.status(200).json({
+    // SEND EMAIL TICKET (non-blocking)
+    if (user?.email) {
+      sendTicketEmail({
+        to: user.email,
+        booking,
+        movie: existingShow.movie,
+        theatre: existingShow.theatre,
+        show: existingShow
+      }).catch(err => console.log('Email error:', err.message));
+    }
 
-      success: true,
-
-      message:
-        "Booking Confirmed",
-
-      booking
-
-    });
-
+    res.status(200).json({ success: true, message: "Booking Confirmed", booking });
   } catch (error) {
-
-    res.status(500).json({
-
-      message: error.message
-
-    });
-
+    res.status(500).json({ message: error.message });
   }
+};
+// DOWNLOAD PDF TICKET
+exports.downloadTicket = async (req, res) => {
+  try {
+    const { generateTicketPDF } = require('../utils/pdfTicket');
+    const Booking = require('../models/Booking');
+    const booking = await Booking.findById(req.params.bookingId)
+      .populate('movie').populate('theatre').populate('show');
+    if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
+    const pdfBuffer = await generateTicketPDF(booking, booking.movie, booking.theatre, booking.show);
+    res.set({
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `attachment; filename="CineVerse-Ticket-${booking.bookingId?.slice(0,8)}.pdf"`,
+      'Content-Length': pdfBuffer.length
+    });
+    res.send(pdfBuffer);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
 };
