@@ -1,4 +1,6 @@
-﻿module.exports = (io) => {
+﻿const redis = require('../config/redis');
+
+module.exports = (io) => {
   io.on('connection', (socket) => {
     console.log('User Connected:', socket.id);
 
@@ -18,16 +20,23 @@
       socket.leave('admin-room');
     });
 
+    // Broadcast to ALL clients in the room including sender
     socket.on('seatLocked', (data) => {
-      socket.to(data.showId).emit('seatLocked', data);
+      io.to(data.showId).emit('seatLocked', data);
     });
 
+    // Broadcast to ALL clients in the room including sender
     socket.on('seatUnlocked', (data) => {
-      socket.to(data.showId).emit('seatUnlocked', data);
+      io.to(data.showId).emit('seatUnlocked', data);
+    });
+
+    // Broadcast seat expiry to all clients in the room
+    socket.on('seatsExpired', (data) => {
+      io.to(data.showId).emit('seatsExpired', data);
     });
 
     socket.on('bookingConfirmed', (data) => {
-      socket.to(data.showId).emit('bookingConfirmed', data);
+      io.to(data.showId).emit('bookingConfirmed', data);
       io.to('admin-room').emit('newBookingActivity', {
         type: 'BOOKING',
         userName: data.userName || 'A user',
@@ -39,7 +48,7 @@
     });
 
     socket.on('bookingCancelled', (data) => {
-      socket.to(data.showId).emit('seatReopened', data);
+      io.to(data.showId).emit('seatReopened', data);
       io.to('admin-room').emit('newBookingActivity', {
         type: 'CANCELLATION',
         userName: data.userName || 'A user',

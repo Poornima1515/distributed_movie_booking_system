@@ -7,6 +7,7 @@ const { v4: uuidv4 } = require('uuid');
 const lockSeats = async (req, res) => {
   try {
     const { showId, seats, userId } = req.body;
+
     const existingShow = await Show.findById(showId);
     if (!existingShow) return res.status(404).json({ message: 'Show not found' });
 
@@ -15,16 +16,24 @@ const lockSeats = async (req, res) => {
         return res.status(400).json({ message: `${seat} already booked` });
     }
 
-    const expiresAt = Date.now() + 120000;
+    const LOCK_TTL = 120; // seconds
+    const expiresAt = Date.now() + LOCK_TTL * 1000;
     const lockedKeys = [];
+
     try {
       for (const seat of seats) {
         const lockKey = `lock:${showId}:${seat}`;
-        const result = await redis.set(lockKey, JSON.stringify({ userId, expiresAt }), 'EX', 120, 'NX');
+        const result = await redis.set(
+          lockKey,
+          JSON.stringify({ userId, expiresAt }),
+          'EX', LOCK_TTL,
+          'NX'
+        );
         if (!result) throw new Error(`${seat} already locked`);
         lockedKeys.push(lockKey);
       }
     } catch (error) {
+      // Roll back any keys we already set
       for (const key of lockedKeys) await redis.del(key);
       return res.status(400).json({ message: error.message });
     }
@@ -46,10 +55,11 @@ const unlockSeat = async (req, res) => {
   }
 };
 
-// CONFIRM BOOKING (legacy path)
+// CONFIRM BOOKING
 const confirmBooking = async (req, res) => {
   try {
     const { user, movie, theatre, show, seats, totalAmount } = req.body;
+
     const existingShow = await Show.findById(show);
     if (!existingShow) return res.status(404).json({ message: 'Show not found' });
 
@@ -57,14 +67,21 @@ const confirmBooking = async (req, res) => {
       if (existingShow.bookedSeats.includes(seat))
         return res.status(400).json({ message: `${seat} already booked` });
     }
+
     for (const seat of seats) {
       const lockData = await redis.get(`lock:${show}:${seat}`);
       if (!lockData) return res.status(400).json({ message: `Lock expired for ${seat}` });
     }
 
-    const booking = await Booking.create({ user, movie, theatre, show, seats, totalAmount, bookingId: uuidv4(), status: 'CONFIRMED' });
+    const booking = await Booking.create({
+      user, movie, theatre, show, seats, totalAmount,
+      bookingId: uuidv4(),
+      status: 'CONFIRMED'
+    });
+
     existingShow.bookedSeats.push(...seats);
     await existingShow.save();
+
     for (const seat of seats) await redis.del(`lock:${show}:${seat}`);
 
     res.status(201).json({ message: 'Booking Confirmed', booking });
@@ -76,7 +93,9 @@ const confirmBooking = async (req, res) => {
 // GET ALL BOOKINGS (admin)
 const getBookings = async (req, res) => {
   try {
-    const bookings = await Booking.find().populate('movie').populate('theatre').populate('show').populate('user', 'name email');
+    const bookings = await Booking.find()
+      .populate('movie').populate('theatre').populate('show')
+      .populate('user', 'name email');
     res.json(bookings);
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -95,22 +114,31 @@ const getUserBookings = async (req, res) => {
   }
 };
 
-// GET LOCKED SEATS
+// GET LOCKED SEATS — filters out expired keys
 const getLockedSeats = async (req, res) => {
   try {
     const { showId } = req.params;
     const keys = await redis.keys(`lock:${showId}:*`);
     const lockedSeats = [];
     const seatOwners = {};
+    const now = Date.now();
+
     for (const key of keys) {
-      const seat = key.split(':')[2];
       const data = await redis.get(key);
       if (data) {
         const parsed = JSON.parse(data);
-        lockedSeats.push(seat);
-        seatOwners[seat] = parsed.userId;
+        // Double-check not expired (Redis TTL should handle this, but be safe)
+        if (parsed.expiresAt > now) {
+          const seat = key.split(':')[2];
+          lockedSeats.push(seat);
+          seatOwners[seat] = parsed.userId;
+        } else {
+          // Clean up stale key
+          await redis.del(key);
+        }
       }
     }
+
     res.json({ lockedSeats, seatOwners });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -127,14 +155,12 @@ const cancelBooking = async (req, res) => {
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (booking.status === 'CANCELLED') return res.status(400).json({ message: 'Booking already cancelled' });
 
-    // REOPEN SEATS IN SHOW
     const show = await Show.findById(booking.show._id || booking.show);
     if (show) {
       show.bookedSeats = show.bookedSeats.filter(s => !booking.seats.includes(s));
       await show.save();
     }
 
-    // SIMULATE REFUND (75% refund)
     const refundAmount = Math.round(booking.totalAmount * 0.75);
 
     booking.status = 'CANCELLED';
@@ -153,4 +179,12 @@ const cancelBooking = async (req, res) => {
   }
 };
 
-module.exports = { lockSeats, unlockSeat, confirmBooking, getBookings, getUserBookings, getLockedSeats, cancelBooking };
+module.exports = {
+  lockSeats,
+  unlockSeat,
+  confirmBooking,
+  getBookings,
+  getUserBookings,
+  getLockedSeats,
+  cancelBooking
+};
