@@ -25,7 +25,11 @@ const getTheatres = async (req, res) => {
 const deleteTheatre = async (req, res) => {
   try {
     const theatre = await Theatre.findByIdAndDelete(req.params.id);
-    if (!theatre) return res.status(404).json({ message: 'Theatre not found' });
+
+    if (!theatre) {
+      return res.status(404).json({ message: 'Theatre not found' });
+    }
+
     res.json({ message: 'Theatre deleted successfully' });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -37,9 +41,10 @@ const addShow = async (req, res) => {
   try {
     const { movie, theatre, showTime, price } = req.body;
 
-    // AUTO GENERATE SEATS (rows A-E, 10 seats each = 50 seats)
+    // AUTO GENERATE SEATS (50 seats)
     const seats = [];
     const rows = ['A', 'B', 'C', 'D', 'E'];
+
     for (const row of rows) {
       for (let i = 1; i <= 10; i++) {
         seats.push(`${row}${i}`);
@@ -55,28 +60,43 @@ const addShow = async (req, res) => {
       bookedSeats: []
     });
 
-    res.status(201).json({ message: 'Show added successfully', show });
+    res.status(201).json({
+      message: 'Show added successfully',
+      show
+    });
+
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// GET SHOWS
+// GET ALL SHOWS
 const getShows = async (req, res) => {
   try {
-    const shows = await Show.find().populate('movie').populate('theatre');
+    const shows = await Show.find()
+      .populate('movie')
+      .populate('theatre');
+
     res.json(shows);
+
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-// GET SINGLE SHOW BY ID
+// GET SINGLE SHOW
 const getShowById = async (req, res) => {
   try {
-    const show = await Show.findById(req.params.id).populate('movie').populate('theatre');
-    if (!show) return res.status(404).json({ message: 'Show not found' });
+    const show = await Show.findById(req.params.id)
+      .populate('movie')
+      .populate('theatre');
+
+    if (!show) {
+      return res.status(404).json({ message: 'Show not found' });
+    }
+
     res.json(show);
+
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -86,19 +106,24 @@ const getShowById = async (req, res) => {
 const deleteShow = async (req, res) => {
   try {
     const show = await Show.findByIdAndDelete(req.params.id);
-    if (!show) return res.status(404).json({ message: 'Show not found' });
+
+    if (!show) {
+      return res.status(404).json({ message: 'Show not found' });
+    }
+
     res.json({ message: 'Show deleted successfully' });
+
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
 
-
-// MIGRATE: Fill seats for all shows that have an empty seats array
+// MIGRATE EMPTY SEATS
 const migrateSeats = async (req, res) => {
   try {
     const rows = ['A', 'B', 'C', 'D', 'E'];
     const defaultSeats = [];
+
     for (const row of rows) {
       for (let i = 1; i <= 10; i++) {
         defaultSeats.push(`${row}${i}`);
@@ -113,10 +138,12 @@ const migrateSeats = async (req, res) => {
     res.json({
       message: `Migration complete. ${result.modifiedCount} show(s) updated with 50 seats.`
     });
+
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
+
 // EXPORTS
 module.exports = {
   addTheatre,
