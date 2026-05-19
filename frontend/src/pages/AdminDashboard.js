@@ -50,7 +50,17 @@ function AdminDashboard() {
       // Auto-refresh bookings data when new activity comes in
       fetchData();
     });
-    return () => { socket.emit('leaveAdmin'); socket.off('newBookingActivity'); };
+
+    // Poll bookings every 30 seconds to catch any missed updates
+    const pollInterval = setInterval(() => {
+      fetchData();
+    }, 30000);
+
+    return () => {
+      socket.emit('leaveAdmin');
+      socket.off('newBookingActivity');
+      clearInterval(pollInterval);
+    };
   }, [fetchData, fetchAnalytics]);
 
   const deleteMovie = async (id) => {
@@ -87,7 +97,7 @@ function AdminDashboard() {
 
         <div style={{display:'flex',gap:'8px',marginBottom:'30px',flexWrap:'wrap'}}>
           {TABS.map(tab => (
-            <button key={tab} onClick={()=>setActiveTab(tab)} style={{padding:'9px 18px',borderRadius:'10px',border:activeTab===tab?'none':'1px solid rgba(255,255,255,0.06)',cursor:'pointer',fontWeight:'700',fontSize:'13px',background:activeTab===tab?'#ff004f':'#111827',color:activeTab===tab?'white':'#94a3b8',position:'relative'}}>
+            <button key={tab} onClick={()=>{ setActiveTab(tab); if(tab==='Bookings'||tab==='Overview') fetchData(); if(tab==='Analytics') fetchAnalytics(); }} style={{padding:'9px 18px',borderRadius:'10px',border:activeTab===tab?'none':'1px solid rgba(255,255,255,0.06)',cursor:'pointer',fontWeight:'700',fontSize:'13px',background:activeTab===tab?'#ff004f':'#111827',color:activeTab===tab?'white':'#94a3b8',position:'relative'}}>
               {tab}
               {tab==='Live Feed' && liveActivity.length>0 && <span style={{position:'absolute',top:'-6px',right:'-6px',background:'#10b981',borderRadius:'50%',width:'16px',height:'16px',fontSize:'9px',display:'flex',alignItems:'center',justifyContent:'center',color:'white'}}>{liveActivity.length>9?'9+':liveActivity.length}</span>}
             </button>
