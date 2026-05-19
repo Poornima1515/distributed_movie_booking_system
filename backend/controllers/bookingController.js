@@ -84,6 +84,20 @@ const confirmBooking = async (req, res) => {
 
     for (const seat of seats) await redis.del(`lock:${show}:${seat}`);
 
+    // EMIT SOCKET EVENTS FROM BACKEND
+    const io = req.app.get('io');
+    if (io) {
+      io.to(show).emit('bookingConfirmed', { showId: show, seats });
+      io.to('admin-room').emit('newBookingActivity', {
+        type: 'BOOKING',
+        userName: 'A user',
+        seats,
+        movieTitle: '',
+        theatreName: '',
+        timestamp: new Date().toISOString()
+      });
+    }
+
     res.status(201).json({ message: 'Booking Confirmed', booking });
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -167,6 +181,23 @@ const cancelBooking = async (req, res) => {
     booking.cancelledAt = new Date();
     booking.refundAmount = refundAmount;
     await booking.save();
+
+    // EMIT SOCKET EVENTS FROM BACKEND
+    const io = req.app.get('io');
+    if (io) {
+      io.to(String(booking.show._id || booking.show)).emit('seatReopened', {
+        seats: booking.seats,
+        showId: booking.show._id || booking.show
+      });
+      io.to('admin-room').emit('newBookingActivity', {
+        type: 'CANCELLATION',
+        userName: booking.user?.name || 'A user',
+        seats: booking.seats,
+        movieTitle: booking.movie?.title || 'a movie',
+        theatreName: booking.theatre?.name || '',
+        timestamp: new Date().toISOString()
+      });
+    }
 
     res.json({
       message: 'Booking cancelled successfully',

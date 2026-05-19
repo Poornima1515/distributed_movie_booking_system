@@ -38,6 +38,9 @@ const io = new Server(server, {
   cors: corsOptions
 });
 
+// Make io accessible to controllers via app
+app.set('io', io);
+
 seatSocket(io);
 
 // DATABASE

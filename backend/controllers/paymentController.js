@@ -66,6 +66,22 @@ exports.verifyPayment = async (req, res) => {
       await redis.del(`lock:${showId}:${seat}`);
     }
 
+    // EMIT SOCKET EVENTS FROM BACKEND — reliable regardless of frontend state
+    const io = req.app.get('io');
+    if (io) {
+      // Notify seat page users that seats are now booked
+      io.to(showId).emit('bookingConfirmed', { showId, seats });
+      // Notify admin live feed
+      io.to('admin-room').emit('newBookingActivity', {
+        type: 'BOOKING',
+        userName: user?.name || 'A user',
+        seats,
+        movieTitle: existingShow.movie?.title || 'a movie',
+        theatreName: existingShow.theatre?.name || '',
+        timestamp: new Date().toISOString()
+      });
+    }
+
     // SEND EMAIL TICKET (non-blocking)
     if (user?.email) {
       sendTicketEmail({
