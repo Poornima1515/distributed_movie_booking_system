@@ -27,7 +27,12 @@ const allowedOrigins = [
 const corsOptions = {
   origin: (origin, callback) => {
     // Allow requests with no origin (e.g. mobile apps, curl)
-    if (!origin || allowedOrigins.includes(origin)) {
+    if (!origin) return callback(null, true);
+    // Allow exact match or any Vercel preview URL for this project
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      /^https:\/\/distributed-movie-booking-system.*\.vercel\.app$/.test(origin);
+    if (isAllowed) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
