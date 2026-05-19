@@ -168,8 +168,8 @@ function Seats() {
     }
 
     prevMySeatCountRef.current = mySeats.length;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mySeats.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: only re-run when seat count changes
+  }, [mySeats.length]); // eslint-disable-line
 
   // Cleanup timer on unmount
   useEffect(() => {
@@ -214,8 +214,8 @@ function Seats() {
       expiredSeats.forEach((s) => { delete updated[s]; });
       return updated;
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [showId, currentUserId]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: showId and currentUserId are stable
+  }, [showId, currentUserId]); // eslint-disable-line
 
   // ─── TOGGLE SEAT ─────────────────────────────────────────────
   const toggleSeat = async (seat) => {
