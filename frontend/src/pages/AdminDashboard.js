@@ -5,7 +5,10 @@ import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { useTheme } from '../context/ThemeContext';
 
-const socket = io('http://localhost:5000');
+const SOCKET_URL = process.env.REACT_APP_API_URL
+  ? process.env.REACT_APP_API_URL.replace('/api', '')
+  : 'http://localhost:5000';
+const socket = io(SOCKET_URL);
 const TABS = ['Overview','Analytics','Live Feed','Movies','Shows','Theatres','Bookings'];
 
 function AdminDashboard() {

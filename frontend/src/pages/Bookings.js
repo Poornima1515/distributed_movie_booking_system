@@ -6,7 +6,10 @@ import { useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { useTheme } from '../context/ThemeContext';
 
-const socket = io('http://localhost:5000');
+const SOCKET_URL = process.env.REACT_APP_API_URL
+  ? process.env.REACT_APP_API_URL.replace('/api', '')
+  : 'http://localhost:5000';
+const socket = io(SOCKET_URL);
 
 function Bookings() {
   const [bookings, setBookings] = useState([]);
@@ -63,7 +66,7 @@ function Bookings() {
 
   const handleDownloadPDF = async (booking) => {
     try {
-      const res = await fetch(`http://localhost:5000/api/payment/ticket/${booking._id}`, {
+      const res = await fetch(`${(process.env.REACT_APP_API_URL || 'http://localhost:5000/api')}/payment/ticket/${booking._id}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       if (!res.ok) throw new Error('Failed to download');

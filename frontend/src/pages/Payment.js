@@ -4,7 +4,10 @@ import { io } from 'socket.io-client';
 import { useLocation, useNavigate } from 'react-router-dom';
 import API from '../api';
 
-const socket = io('http://localhost:5000');
+const SOCKET_URL = process.env.REACT_APP_API_URL
+  ? process.env.REACT_APP_API_URL.replace('/api', '')
+  : 'http://localhost:5000';
+const socket = io(SOCKET_URL);
 
 function Payment() {
   const location = useLocation();

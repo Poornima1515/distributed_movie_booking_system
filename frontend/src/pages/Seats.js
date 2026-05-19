@@ -7,7 +7,10 @@ import { io } from 'socket.io-client';
 import { useTheme } from '../context/ThemeContext';
 
 // Single socket instance outside component so it persists across renders
-const socket = io('http://localhost:5000', { autoConnect: true });
+const SOCKET_URL = process.env.REACT_APP_API_URL
+  ? process.env.REACT_APP_API_URL.replace('/api', '')
+  : 'http://localhost:5000';
+const socket = io(SOCKET_URL, { autoConnect: true });
 
 const LOCK_DURATION = 120; // seconds
 
@@ -282,12 +285,12 @@ function Seats() {
 
     try {
       const { data: order } = await axios.post(
-        'http://localhost:5000/api/payment/create-order',
+        `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/payment/create-order`,
         { amount: totalPrice }
       );
 
       const options = {
-        key: 'rzp_test_SouWI5KXK5cZAk',
+        key: process.env.REACT_APP_RAZORPAY_KEY || 'rzp_test_SouWI5KXK5cZAk',
         amount: order.amount,
         currency: order.currency,
         name: 'CineVerse',
@@ -296,7 +299,7 @@ function Seats() {
         handler: async (response) => {
           try {
             const verifyRes = await axios.post(
-              'http://localhost:5000/api/payment/verify',
+              `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/payment/verify`,
               { ...response, seats: mySeats, showId, userId: currentUserId }
             );
             if (verifyRes.data.success) {

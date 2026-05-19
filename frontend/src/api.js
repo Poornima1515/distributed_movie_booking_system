@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+// In production, REACT_APP_API_URL should be set to your Render backend URL
+// e.g. https://your-app.onrender.com/api
 const API = axios.create({
-  baseURL: 'http://localhost:5000/api'
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:5000/api'
 });
 
 // Attach JWT token to every request

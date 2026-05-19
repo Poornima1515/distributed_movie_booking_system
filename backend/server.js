@@ -18,13 +18,28 @@ const seatSocket = require('./sockets/seatSocket');
 
 const app = express();
 
+// Allow multiple origins: local dev + deployed frontend
+const allowedOrigins = [
+  "http://localhost:3000",
+  process.env.FRONTEND_URL
+].filter(Boolean);
+
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (e.g. mobile apps, curl)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true
+};
+
 // SOCKET SERVER
 const server = http.createServer(app);
 const io = new Server(server, {
-  cors: {
-    origin: "http://localhost:3000",
-    credentials: true
-  }
+  cors: corsOptions
 });
 
 seatSocket(io);
@@ -33,10 +48,7 @@ seatSocket(io);
 connectDB();
 
 // MIDDLEWARES
-app.use(cors({
-  origin: "http://localhost:3000",
-  credentials: true
-}));
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // ROUTES
