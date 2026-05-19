@@ -86,7 +86,6 @@ exports.verifyPayment = async (req, res) => {
 exports.downloadTicket = async (req, res) => {
   try {
     const { generateTicketPDF } = require('../utils/pdfTicket');
-    const Booking = require('../models/Booking');
     const booking = await Booking.findById(req.params.bookingId)
       .populate('movie').populate('theatre').populate('show');
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
@@ -95,10 +94,13 @@ exports.downloadTicket = async (req, res) => {
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="CineVerse-Ticket-${booking.bookingId?.slice(0,8)}.pdf"`,
-      'Content-Length': pdfBuffer.length
+      'Content-Length': pdfBuffer.length,
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Expose-Headers': 'Content-Disposition'
     });
     res.send(pdfBuffer);
   } catch (error) {
+    console.log('PDF error:', error.message);
     res.status(500).json({ message: error.message });
   }
 };

@@ -45,7 +45,11 @@ function AdminDashboard() {
   useEffect(() => {
     fetchData(); fetchAnalytics();
     socket.emit('joinAdmin');
-    socket.on('newBookingActivity', (data) => { setLiveActivity(prev => [data,...prev].slice(0,50)); });
+    socket.on('newBookingActivity', (data) => {
+      setLiveActivity(prev => [data,...prev].slice(0,50));
+      // Auto-refresh bookings data when new activity comes in
+      fetchData();
+    });
     return () => { socket.emit('leaveAdmin'); socket.off('newBookingActivity'); };
   }, [fetchData, fetchAnalytics]);
 
