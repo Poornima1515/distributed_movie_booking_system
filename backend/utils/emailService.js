@@ -23,6 +23,20 @@ const sendTicketEmail = async ({ to, booking, movie, theatre, show }) => {
   const seatList = booking.seats.join(', ');
   const showTime = show?.showTime || 'N/A';
 
+  // Generate PDF attachment
+  let pdfAttachment = null;
+  try {
+    const { generateTicketPDF } = require('../utils/pdfTicket');
+    const pdfBuffer = await generateTicketPDF(booking, movie, theatre, show);
+    pdfAttachment = {
+      filename: `CineVerse-Ticket-${booking.bookingId?.slice(0,8)}.pdf`,
+      content: pdfBuffer,
+      contentType: 'application/pdf'
+    };
+  } catch (err) {
+    console.error('PDF attachment generation failed:', err.message);
+  }
+
   const html = `
   <!DOCTYPE html>
   <html>
@@ -97,7 +111,8 @@ const sendTicketEmail = async ({ to, booking, movie, theatre, show }) => {
     from: `"CineVerse 🎬" <${process.env.EMAIL_USER}>`,
     to,
     subject: `🎟️ Booking Confirmed — ${movie?.title || 'Your Movie'} | ${seatList}`,
-    html
+    html,
+    attachments: pdfAttachment ? [pdfAttachment] : []
   });
 };
 

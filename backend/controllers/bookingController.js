@@ -2,6 +2,7 @@
 const Show = require('../models/Show');
 const Waitlist = require('../models/Waitlist');
 const User = require('../models/User');
+const Theatre = require('../models/Theatre');
 const redis = require('../config/redis');
 const { v4: uuidv4 } = require('uuid');
 const { sendCancellationEmail, sendWaitlistEmail } = require('../utils/emailService');
@@ -173,20 +174,50 @@ const cancelBooking = async (req, res) => {
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (booking.status === 'CANCELLED') return res.status(400).json({ message: 'Booking already cancelled' });
 
+    // ── 1. FREE UP SEATS ──────────────────────────────────────────
     const show = await Show.findById(booking.show._id || booking.show);
     if (show) {
       show.bookedSeats = show.bookedSeats.filter(s => !booking.seats.includes(s));
       await show.save();
     }
 
+    // ── 2. CALCULATE REFUND ───────────────────────────────────────
     const refundAmount = Math.round(booking.totalAmount * 0.75);
 
+    // ── 3. REVERSE LOYALTY POINTS ─────────────────────────────────
+    // Only deduct points that were actually earned from this booking
+    const pointsToDeduct = booking.loyaltyPointsEarned || 0;
+    if (pointsToDeduct > 0 && booking.user?._id) {
+      await User.findByIdAndUpdate(booking.user._id, {
+        $inc: {
+          loyaltyPoints: -pointsToDeduct,
+          totalSpent: -(booking.totalAmount || 0)
+        }
+      });
+      console.log(`Deducted ${pointsToDeduct} loyalty points from user ${booking.user._id}`);
+    }
+
+    // ── 4. REVERSE THEATRE REVENUE ────────────────────────────────
+    if (booking.theatre?._id) {
+      const theatre = await Theatre.findById(booking.theatre._id);
+      if (theatre) {
+        const rate = theatre.commissionRate || 10;
+        const ownerRev = booking.totalAmount * (1 - rate / 100);
+        const adminRev = booking.totalAmount * (rate / 100);
+        theatre.ownerRevenue = Math.max(0, (theatre.ownerRevenue || 0) - ownerRev);
+        theatre.adminRevenue = Math.max(0, (theatre.adminRevenue || 0) - adminRev);
+        theatre.totalRevenue = Math.max(0, (theatre.totalRevenue || 0) - booking.totalAmount);
+        await theatre.save();
+      }
+    }
+
+    // ── 5. UPDATE BOOKING STATUS ──────────────────────────────────
     booking.status = 'CANCELLED';
     booking.cancelledAt = new Date();
     booking.refundAmount = refundAmount;
     await booking.save();
 
-    // EMIT SOCKET EVENTS FROM BACKEND
+    // ── 6. SOCKET EVENTS ─────────────────────────────────────────
     const io = req.app.get('io');
     if (io) {
       io.to(String(booking.show._id || booking.show)).emit('seatReopened', {
@@ -203,14 +234,16 @@ const cancelBooking = async (req, res) => {
       });
     }
 
+    // ── 7. SEND RESPONSE ─────────────────────────────────────────
     res.json({
       message: 'Booking cancelled successfully',
       refundAmount,
+      pointsDeducted: pointsToDeduct,
       seats: booking.seats,
       showId: booking.show._id || booking.show
     });
 
-    // SEND CANCELLATION EMAIL — use userEmail field OR populated user email
+    // ── 8. SEND CANCELLATION EMAIL (non-blocking, after response) ─
     const emailTo = booking.userEmail || booking.user?.email;
     if (emailTo) {
       sendCancellationEmail({
@@ -218,10 +251,10 @@ const cancelBooking = async (req, res) => {
         booking,
         movie: booking.movie,
         theatre: booking.theatre
-      }).catch(err => console.error('Email error (cancellation):', err.message));
+      }).catch(err => console.error('Cancellation email error:', err.message));
     }
 
-    // NOTIFY WAITLIST
+    // ── 9. NOTIFY WAITLIST ────────────────────────────────────────
     const waitlistEntries = await Waitlist.find({
       show: booking.show._id || booking.show,
       status: 'waiting'
@@ -238,13 +271,14 @@ const cancelBooking = async (req, res) => {
           movie: entry.show?.movie,
           theatre: entry.show?.theatre,
           show: entry.show
-        }).catch(err => console.error('Email error (waitlist):', err.message));
+        }).catch(err => console.error('Waitlist email error:', err.message));
         entry.status = 'notified';
         entry.notifiedAt = new Date();
         await entry.save();
       }
     }
   } catch (error) {
+    console.error('cancelBooking error:', error.message);
     res.status(500).json({ message: error.message });
   }
 };
