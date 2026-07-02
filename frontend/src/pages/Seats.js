@@ -371,7 +371,6 @@ function Seats() {
   const handlePayment = async () => {
     if (mySeats.length === 0) return;
 
-    // Check timer hasn't expired
     if (lockStartRef.current !== null) {
       const elapsed = Math.floor((Date.now() - lockStartRef.current) / 1000);
       if (elapsed >= LOCK_DURATION) {
@@ -381,9 +380,13 @@ function Seats() {
     }
 
     try {
+      const token = localStorage.getItem('token');
+      const headers = { Authorization: `Bearer ${token}` };
+
       const { data: order } = await axios.post(
         `${API_BASE}/payment/create-order`,
-        { amount: totalPrice, showId, seats: mySeats, promoCode: promoResult?.code || '', loyaltyDiscount }
+        { amount: Math.max(1, totalPrice), showId, seats: mySeats, promoCode: promoResult?.code || '', loyaltyDiscount },
+        { headers }
       );
 
       const options = {
@@ -405,12 +408,12 @@ function Seats() {
                 meals: mealsPayload,
                 promoCode: promoResult?.code || '',
                 loyaltyPointsToRedeem
-              }
+              },
+              { headers }
             );
             if (verifyRes.data.success) {
               socket.emit('bookingConfirmed', {
-                showId,
-                seats: mySeats,
+                showId, seats: mySeats,
                 userName: user.name,
                 movieTitle: show.movie?.title,
                 theatreName: show.theatre?.name
@@ -422,8 +425,9 @@ function Seats() {
                 }
               });
             }
-          } catch {
-            alert('Payment verification failed.');
+          } catch (verifyErr) {
+            const msg = verifyErr.response?.data?.message || verifyErr.message || 'Payment verification failed';
+            alert(`Verification failed: ${msg}`);
           }
         },
         prefill: { name: user?.name || '' },
@@ -431,8 +435,9 @@ function Seats() {
       };
 
       new window.Razorpay(options).open();
-    } catch {
-      alert('Payment failed. Try again.');
+    } catch (orderErr) {
+      const msg = orderErr.response?.data?.message || orderErr.message || 'Could not create payment order';
+      alert(`Payment failed: ${msg}`);
     }
   };
 
