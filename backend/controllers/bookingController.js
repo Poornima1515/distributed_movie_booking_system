@@ -6,6 +6,7 @@ const Theatre = require('../models/Theatre');
 const redis = require('../config/redis');
 const { v4: uuidv4 } = require('uuid');
 const { sendCancellationEmail, sendWaitlistEmail } = require('../utils/emailService');
+const { logAction } = require('../utils/auditLogger');
 
 // LOCK SEATS
 const lockSeats = async (req, res) => {
@@ -242,6 +243,9 @@ const cancelBooking = async (req, res) => {
       seats: booking.seats,
       showId: booking.show._id || booking.show
     });
+
+    // ── AUDIT LOG ─────────────────────────────────────────────────
+    logAction({ userId: booking.user?._id, userName: booking.user?.name, action: 'CANCEL_BOOKING', resource: 'Booking', resourceId: booking._id.toString(), details: { refundAmount, seats: booking.seats, movie: booking.movie?.title }, ip: req.ip });
 
     // ── 8. SEND CANCELLATION EMAIL (non-blocking, after response) ─
     const emailTo = booking.userEmail || booking.user?.email;

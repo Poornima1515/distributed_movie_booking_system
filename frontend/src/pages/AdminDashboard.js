@@ -12,7 +12,7 @@ const socket = io(SOCKET_URL, {
   transports: ['websocket', 'polling'],
   withCredentials: true
 });
-const TABS = ['Overview','Analytics','Live Feed','Movies','Shows','Theatres','Bookings','Users'];
+const TABS = ['Overview','Analytics','Live Feed','Movies','Shows','Theatres','Bookings','Users','Promos','Audit'];
 
 function AdminDashboard() {
   const navigate = useNavigate();
@@ -25,8 +25,13 @@ function AdminDashboard() {
   const [liveActivity, setLiveActivity] = useState([]);
   const [loading, setLoading] = useState(false);
   const [users, setUsers] = useState([]);
-  const [assigningTheatre, setAssigningTheatre] = useState(null); // theatreId being assigned
+  const [assigningTheatre, setAssigningTheatre] = useState(null);
   const [assignForm, setAssignForm] = useState({ ownerId: '', commissionRate: 10 });
+  const [promos, setPromos] = useState([]);
+  const [promoForm, setPromoForm] = useState({ code: '', discountType: 'percentage', discountValue: '', minAmount: '', maxUses: 100, expiresAt: '' });
+  const [showPromoForm, setShowPromoForm] = useState(false);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [analyticsDateRange, setAnalyticsDateRange] = useState({ startDate: '', endDate: '' });
   const { colors } = useTheme();
   const feedRef = useRef(null);
 
@@ -49,6 +54,24 @@ function AdminDashboard() {
     try { const res = await API.get('/admin/users'); setUsers(res.data); } catch(e){}
   }, []);
 
+  const fetchPromos = useCallback(async () => {
+    try { const res = await API.get('/promo'); setPromos(res.data); } catch(e){}
+  }, []);
+
+  const fetchAuditLogs = useCallback(async () => {
+    try { const res = await API.get('/audit?limit=50'); setAuditLogs(res.data.logs || []); } catch(e){}
+  }, []);
+
+  const fetchAnalyticsWithRange = useCallback(async () => {
+    try {
+      const params = new URLSearchParams();
+      if (analyticsDateRange.startDate) params.append('startDate', analyticsDateRange.startDate);
+      if (analyticsDateRange.endDate) params.append('endDate', analyticsDateRange.endDate);
+      const res = await API.get(`/analytics?${params.toString()}`);
+      setAnalytics(res.data);
+    } catch(e){ console.log(e); }
+  }, [analyticsDateRange]);
+
   const handleAssignOwner = async (theatreId) => {
     try {
       await API.post('/admin/assign-owner', {
@@ -60,6 +83,25 @@ function AdminDashboard() {
       setAssigningTheatre(null);
       fetchData();
     } catch(e) { alert(e.response?.data?.message || 'Failed to assign owner'); }
+  };
+
+  const handleCreatePromo = async (e) => {
+    e.preventDefault();
+    try {
+      await API.post('/promo', { ...promoForm, discountValue: Number(promoForm.discountValue), minAmount: Number(promoForm.minAmount)||0, maxUses: Number(promoForm.maxUses)||100 });
+      setShowPromoForm(false);
+      setPromoForm({ code:'', discountType:'percentage', discountValue:'', minAmount:'', maxUses:100, expiresAt:'' });
+      fetchPromos();
+    } catch(err){ alert(err.response?.data?.message||'Failed to create promo'); }
+  };
+
+  const handleDeletePromo = async (id) => {
+    if(!window.confirm('Delete this promo code?')) return;
+    try { await API.delete(`/promo/${id}`); fetchPromos(); } catch{ alert('Failed'); }
+  };
+
+  const handleTogglePromo = async (id) => {
+    try { await API.patch(`/promo/${id}/toggle`); fetchPromos(); } catch{ alert('Failed'); }
   };
 
   useEffect(() => {
@@ -117,7 +159,7 @@ function AdminDashboard() {
 
         <div style={{display:'flex',gap:'8px',marginBottom:'30px',flexWrap:'wrap'}}>
           {TABS.map(tab => (
-            <button key={tab} onClick={()=>{ setActiveTab(tab); if(tab==='Bookings'||tab==='Overview') fetchData(); if(tab==='Analytics') fetchAnalytics(); if(tab==='Users') fetchUsers(); }} style={{padding:'9px 18px',borderRadius:'10px',border:activeTab===tab?'none':'1px solid rgba(255,255,255,0.06)',cursor:'pointer',fontWeight:'700',fontSize:'13px',background:activeTab===tab?'#ff004f':'#111827',color:activeTab===tab?'white':'#94a3b8',position:'relative'}}>
+            <button key={tab} onClick={()=>{ setActiveTab(tab); if(tab==='Bookings'||tab==='Overview') fetchData(); if(tab==='Analytics') fetchAnalyticsWithRange(); if(tab==='Users') fetchUsers(); if(tab==='Promos') fetchPromos(); if(tab==='Audit') fetchAuditLogs(); }} style={{padding:'9px 18px',borderRadius:'10px',border:activeTab===tab?'none':'1px solid rgba(255,255,255,0.06)',cursor:'pointer',fontWeight:'700',fontSize:'13px',background:activeTab===tab?'#ff004f':'#111827',color:activeTab===tab?'white':'#94a3b8',position:'relative'}}>
               {tab}
               {tab==='Live Feed' && liveActivity.length>0 && <span style={{position:'absolute',top:'-6px',right:'-6px',background:'#10b981',borderRadius:'50%',width:'16px',height:'16px',fontSize:'9px',display:'flex',alignItems:'center',justifyContent:'center',color:'white'}}>{liveActivity.length>9?'9+':liveActivity.length}</span>}
             </button>
@@ -146,7 +188,15 @@ function AdminDashboard() {
 
         {activeTab==='Analytics' && (
           <div>
-            {!analytics ? <div style={{textAlign:'center',padding:'60px',color:'#94a3b8'}}><p>Loading analytics...</p></div> : (
+            {/* DATE RANGE FILTER */}
+            <div style={{display:'flex',gap:'10px',alignItems:'center',marginBottom:'24px',flexWrap:'wrap',background:'#111827',padding:'16px 20px',borderRadius:'14px',border:'1px solid rgba(255,255,255,0.06)'}}>
+              <span style={{color:'#94a3b8',fontSize:'13px',fontWeight:'600'}}>📅 Filter by date:</span>
+              <input type="date" value={analyticsDateRange.startDate} onChange={e=>setAnalyticsDateRange(p=>({...p,startDate:e.target.value}))} style={{padding:'7px 10px',background:'#0a0f1e',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'8px',color:'white',fontSize:'13px'}} />
+              <span style={{color:'#64748b'}}>to</span>
+              <input type="date" value={analyticsDateRange.endDate} onChange={e=>setAnalyticsDateRange(p=>({...p,endDate:e.target.value}))} style={{padding:'7px 10px',background:'#0a0f1e',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'8px',color:'white',fontSize:'13px'}} />
+              <button onClick={fetchAnalyticsWithRange} style={{padding:'7px 16px',background:'#ff004f',border:'none',borderRadius:'8px',color:'white',cursor:'pointer',fontWeight:'700',fontSize:'13px'}}>Apply</button>
+              {(analyticsDateRange.startDate||analyticsDateRange.endDate) && <button onClick={()=>{setAnalyticsDateRange({startDate:'',endDate:''});fetchAnalytics();}} style={{padding:'7px 14px',background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'8px',color:'#ef4444',cursor:'pointer',fontSize:'13px',fontWeight:'600'}}>✕ Clear</button>}
+            </div>
               <div style={{display:'flex',flexDirection:'column',gap:'30px'}}>
                 <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:'16px'}}>
                   <StatCard label='Total Revenue' value={'₹'+(analytics.summary?.totalRevenue||0).toLocaleString()} icon='💰' color='#10b981' />
@@ -456,12 +506,94 @@ function AdminDashboard() {
           </div>
         )}
 
+        {activeTab==='Promos' && (
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px'}}>
+              <h2 style={{margin:0}}>Promo Codes ({promos.length})</h2>
+              <button onClick={()=>setShowPromoForm(p=>!p)} style={addBtnStyle}>+ Create Promo</button>
+            </div>
+            {showPromoForm && (
+              <div style={{background:'#111827',border:'1px solid rgba(255,0,79,0.2)',borderRadius:'16px',padding:'24px',marginBottom:'24px'}}>
+                <h3 style={{margin:'0 0 16px',color:'white'}}>Create New Promo Code</h3>
+                <form onSubmit={handleCreatePromo}>
+                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(180px,1fr))',gap:'12px'}}>
+                    <div><label style={labelStyle}>Code *</label><input required placeholder="e.g. SAVE20" value={promoForm.code} onChange={e=>setPromoForm(p=>({...p,code:e.target.value.toUpperCase()}))} style={inputStyle}/></div>
+                    <div><label style={labelStyle}>Type</label>
+                      <select value={promoForm.discountType} onChange={e=>setPromoForm(p=>({...p,discountType:e.target.value}))} style={inputStyle}>
+                        <option value="percentage">Percentage (%)</option>
+                        <option value="fixed">Fixed (₹)</option>
+                      </select>
+                    </div>
+                    <div><label style={labelStyle}>Value *</label><input required type="number" placeholder={promoForm.discountType==='percentage'?'e.g. 20 (%)':'e.g. 100 (₹)'} value={promoForm.discountValue} onChange={e=>setPromoForm(p=>({...p,discountValue:e.target.value}))} style={inputStyle}/></div>
+                    <div><label style={labelStyle}>Min Amount (₹)</label><input type="number" placeholder="0" value={promoForm.minAmount} onChange={e=>setPromoForm(p=>({...p,minAmount:e.target.value}))} style={inputStyle}/></div>
+                    <div><label style={labelStyle}>Max Uses</label><input type="number" value={promoForm.maxUses} onChange={e=>setPromoForm(p=>({...p,maxUses:e.target.value}))} style={inputStyle}/></div>
+                    <div><label style={labelStyle}>Expires At</label><input type="date" value={promoForm.expiresAt} onChange={e=>setPromoForm(p=>({...p,expiresAt:e.target.value}))} style={inputStyle}/></div>
+                  </div>
+                  <div style={{display:'flex',gap:'10px',marginTop:'16px'}}>
+                    <button type="submit" style={addBtnStyle}>Create</button>
+                    <button type="button" onClick={()=>setShowPromoForm(false)} style={{padding:'10px 20px',background:'transparent',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'10px',color:'#94a3b8',cursor:'pointer',fontWeight:'700',fontSize:'14px'}}>Cancel</button>
+                  </div>
+                </form>
+              </div>
+            )}
+            {promos.length===0 ? <EmptyState message='No promo codes yet.' /> : (
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:'16px'}}>
+                {promos.map(p=>(
+                  <div key={p._id} style={{...cardStyle,opacity:p.isActive?1:0.6}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:'10px'}}>
+                      <span style={{fontFamily:'monospace',fontSize:'18px',fontWeight:'900',color:'#ff004f',letterSpacing:'2px'}}>{p.code}</span>
+                      <span style={{background:p.isActive?'rgba(16,185,129,0.15)':'rgba(100,116,139,0.15)',border:`1px solid ${p.isActive?'rgba(16,185,129,0.4)':'rgba(100,116,139,0.3)'}`,color:p.isActive?'#10b981':'#64748b',padding:'3px 10px',borderRadius:'20px',fontSize:'11px',fontWeight:'700'}}>{p.isActive?'ACTIVE':'INACTIVE'}</span>
+                    </div>
+                    <p style={{color:'white',fontWeight:'700',fontSize:'16px',margin:'0 0 4px'}}>{p.discountType==='percentage'?`${p.discountValue}% off`:`₹${p.discountValue} off`}</p>
+                    <p style={{color:'#64748b',fontSize:'12px',margin:'2px 0'}}>Min: ₹{p.minAmount} · Uses: {p.usedCount}/{p.maxUses}</p>
+                    {p.expiresAt && <p style={{color:'#f59e0b',fontSize:'12px',margin:'2px 0'}}>Expires: {new Date(p.expiresAt).toLocaleDateString('en-IN')}</p>}
+                    <div style={{display:'flex',gap:'8px',marginTop:'12px'}}>
+                      <button onClick={()=>handleTogglePromo(p._id)} style={{flex:1,padding:'7px',background:'rgba(14,165,233,0.15)',border:'1px solid rgba(14,165,233,0.3)',borderRadius:'8px',color:'#0ea5e9',cursor:'pointer',fontWeight:'700',fontSize:'12px'}}>{p.isActive?'Deactivate':'Activate'}</button>
+                      <button onClick={()=>handleDeletePromo(p._id)} style={{flex:1,padding:'7px',background:'rgba(239,68,68,0.1)',border:'1px solid rgba(239,68,68,0.3)',borderRadius:'8px',color:'#ef4444',cursor:'pointer',fontWeight:'700',fontSize:'12px'}}>Delete</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab==='Audit' && (
+          <div>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'20px'}}>
+              <h2 style={{margin:0}}>Audit Logs ({auditLogs.length})</h2>
+              <button onClick={fetchAuditLogs} style={refreshBtnStyle}>🔄 Refresh</button>
+            </div>
+            {auditLogs.length===0 ? <EmptyState message='No audit logs yet.' /> : (
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'13px'}}>
+                  <thead><tr style={{background:'#111827',color:'#94a3b8'}}>
+                    {['Time','User','Action','Resource','Details'].map(h=>(
+                      <th key={h} style={{padding:'10px 14px',textAlign:'left',fontWeight:'600',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>{auditLogs.map((log,i)=>(
+                    <tr key={i} style={{borderBottom:'1px solid rgba(255,255,255,0.03)'}}>
+                      <td style={tdStyle}><span style={{color:'#64748b',fontSize:'11px'}}>{new Date(log.timestamp).toLocaleString('en-IN',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})}</span></td>
+                      <td style={tdStyle}><span style={{color:'#94a3b8',fontSize:'12px'}}>{log.userName||log.user?.name||'—'}</span></td>
+                      <td style={tdStyle}><span style={{background:'rgba(99,102,241,0.15)',border:'1px solid rgba(99,102,241,0.3)',color:'#818cf8',padding:'2px 8px',borderRadius:'12px',fontSize:'11px',fontWeight:'700'}}>{log.action}</span></td>
+                      <td style={tdStyle}><span style={{color:'#94a3b8',fontSize:'12px'}}>{log.resource||'—'}</span></td>
+                      <td style={tdStyle}><span style={{color:'#64748b',fontSize:'11px',fontFamily:'monospace'}}>{log.details?JSON.stringify(log.details).slice(0,60)+'...':''}</span></td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
     </>
   );
 }
 
-function StatCard({label,value,icon,color}) {
+const labelStyle = {display:'block',color:'#94a3b8',fontSize:'12px',fontWeight:'600',marginBottom:'4px'};
+const inputStyle = {width:'100%',padding:'8px 12px',background:'#0a0f1e',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'8px',color:'white',fontSize:'13px',boxSizing:'border-box',outline:'none'};
   return (<div style={{background:'#111827',padding:'24px',borderRadius:'16px',borderLeft:'4px solid '+color,border:'1px solid rgba(255,255,255,0.06)',borderLeftWidth:'4px',borderLeftColor:color}}>
     <span style={{fontSize:'28px'}}>{icon}</span>
     <p style={{color:'#64748b',fontSize:'12px',margin:'8px 0 4px',fontWeight:'600',textTransform:'uppercase',letterSpacing:'1px'}}>{label}</p>

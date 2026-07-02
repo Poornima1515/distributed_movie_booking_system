@@ -12,7 +12,15 @@ const addMovie = async (req, res) => {
 
 const getMovies = async (req, res) => {
   try {
-    const movies = await Movie.find();
+    const { search, genre, language, minRating, sort } = req.query;
+    const filter = {};
+    if (search) filter.title = { $regex: search, $options: 'i' };
+    if (genre) filter.genre = { $regex: genre, $options: 'i' };
+    if (language) filter.language = { $regex: language, $options: 'i' };
+    if (minRating) filter.rating = { $gte: minRating };
+    const sortMap = { rating: { rating: -1 }, title: { title: 1 }, newest: { createdAt: -1 } };
+    const sortBy = sortMap[sort] || { createdAt: -1 };
+    const movies = await Movie.find(filter).sort(sortBy);
     res.json(movies);
   } catch (error) {
     console.log(error);

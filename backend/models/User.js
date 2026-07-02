@@ -33,7 +33,12 @@ const userSchema = new mongoose.Schema({
   totalSpent: {
     type: Number,
     default: 0
-  }
+  },
+
+  // Referral system (Feature 9)
+  referralCode: { type: String, unique: true, sparse: true },
+  referredBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  referralCount: { type: Number, default: 0 }
 
 }, {
   timestamps: true

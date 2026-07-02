@@ -11,6 +11,7 @@ import Payment from './pages/Payment';
 import Success from './pages/Success';
 import Bookings from './pages/Bookings';
 import Revenue from './pages/Revenue';
+import Profile from './pages/Profile';
 import TheatreOwnerDashboard from './pages/TheatreOwnerDashboard';
 
 import AdminDashboard from './pages/AdminDashboard';
@@ -38,6 +39,7 @@ function App() {
           <Route path="/payment" element={<ProtectedRoute><Payment /></ProtectedRoute>} />
           <Route path="/success" element={<ProtectedRoute><Success /></ProtectedRoute>} />
           <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><Profile /></ProtectedRoute>} />
 
           <Route path="/theatre-owner" element={<TheatreOwnerRoute><TheatreOwnerDashboard /></TheatreOwnerRoute>} />
 

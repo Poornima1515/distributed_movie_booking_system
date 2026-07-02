@@ -24,7 +24,14 @@ const bookingSchema = new mongoose.Schema({
   mealsTotal: { type: Number, default: 0 },
 
   // Loyalty points earned from this booking
-  loyaltyPointsEarned: { type: Number, default: 0 }
+  loyaltyPointsEarned: { type: Number, default: 0 },
+
+  // Promo code applied
+  promoCode: String,
+  promoDiscount: { type: Number, default: 0 },
+
+  // Reminder email sent
+  reminderSent: { type: Boolean, default: false }
 });
 
 module.exports = mongoose.model('Booking', bookingSchema);

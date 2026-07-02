@@ -6,9 +6,11 @@ const Movie = require("../models/Movie");
 const Theatre = require("../models/Theatre");
 const User = require("../models/User");
 const Meal = require("../models/Meal");
+const PromoCode = require("../models/PromoCode");
 const redis = require("../config/redis");
 const { v4: uuidv4 } = require("uuid");
 const { sendTicketEmail } = require("../utils/emailService");
+const { logAction } = require("../utils/auditLogger");
 
 // ─── DYNAMIC PRICE CALCULATOR ─────────────────────────────────────────────────
 const getDynamicPrice = (basePrice, bookedCount, totalSeats) => {
@@ -76,7 +78,8 @@ exports.verifyPayment = async (req, res) => {
       seats,
       showId,
       userId,
-      meals: mealsData // array of { mealId, quantity }
+      meals: mealsData,
+      promoCode: promoCodeInput
     } = req.body;
 
     // VERIFY SIGNATURE
@@ -127,8 +130,25 @@ exports.verifyPayment = async (req, res) => {
 
     const totalAmount = ticketsTotal + mealsTotal;
 
-    // LOYALTY POINTS (1 point per ₹10)
-    const loyaltyPointsEarned = Math.floor(totalAmount / 10);
+    // APPLY PROMO CODE
+    let promoDiscount = 0;
+    let appliedPromoCode = '';
+    if (promoCodeInput) {
+      const promo = await PromoCode.findOne({ code: promoCodeInput.toUpperCase(), isActive: true });
+      if (promo && promo.usedCount < promo.maxUses && (!promo.expiresAt || new Date() < promo.expiresAt) && totalAmount >= promo.minAmount) {
+        promoDiscount = promo.discountType === 'percentage'
+          ? Math.round(totalAmount * promo.discountValue / 100)
+          : Math.min(promo.discountValue, totalAmount);
+        appliedPromoCode = promo.code;
+        promo.usedCount += 1;
+        await promo.save();
+      }
+    }
+
+    const finalAmount = Math.max(0, totalAmount - promoDiscount);
+
+    // LOYALTY POINTS (1 point per ₹10 of final amount)
+    const loyaltyPointsEarned = Math.floor(finalAmount / 10);
 
     // SAVE BOOKING
     const booking = await Booking.create({
@@ -137,13 +157,15 @@ exports.verifyPayment = async (req, res) => {
       theatre: existingShow.theatre._id,
       show: showId,
       seats,
-      totalAmount,
+      totalAmount: finalAmount,
       bookingId: uuidv4(),
       userEmail: user?.email || '',
       status: 'CONFIRMED',
       meals: processedMeals,
       mealsTotal,
-      loyaltyPointsEarned
+      loyaltyPointsEarned,
+      promoCode: appliedPromoCode,
+      promoDiscount
     });
 
     // UPDATE BOOKED SEATS (prevent duplicates)
@@ -155,24 +177,27 @@ exports.verifyPayment = async (req, res) => {
       await redis.del(`lock:${showId}:${seat}`);
     }
 
-    // UPDATE THEATRE REVENUE
+    // UPDATE THEATRE REVENUE (use finalAmount after promo)
     const theatre = await Theatre.findById(existingShow.theatre._id);
     if (theatre) {
       const rate = theatre.commissionRate || 10;
-      const ownerRev = totalAmount * (1 - rate / 100);
-      const adminRev = totalAmount * (rate / 100);
+      const ownerRev = finalAmount * (1 - rate / 100);
+      const adminRev = finalAmount * (rate / 100);
       theatre.ownerRevenue += ownerRev;
       theatre.adminRevenue += adminRev;
-      theatre.totalRevenue += totalAmount;
+      theatre.totalRevenue += finalAmount;
       await theatre.save();
     }
 
     // UPDATE USER LOYALTY POINTS + TOTAL SPENT
     if (user) {
       user.loyaltyPoints = (user.loyaltyPoints || 0) + loyaltyPointsEarned;
-      user.totalSpent = (user.totalSpent || 0) + totalAmount;
+      user.totalSpent = (user.totalSpent || 0) + finalAmount;
       await user.save();
     }
+
+    // AUDIT LOG
+    logAction({ userId, userName: user?.name, action: 'CREATE_BOOKING', resource: 'Booking', resourceId: booking._id.toString(), details: { seats, totalAmount: finalAmount, movie: existingShow.movie?.title }, ip: req.ip });
 
     // EMIT SOCKET EVENTS FROM BACKEND
     const io = req.app.get('io');
@@ -203,7 +228,9 @@ exports.verifyPayment = async (req, res) => {
       success: true,
       message: "Booking Confirmed",
       booking,
-      loyaltyPointsEarned
+      loyaltyPointsEarned,
+      promoDiscount,
+      finalAmount
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

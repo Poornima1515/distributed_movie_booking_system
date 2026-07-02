@@ -11,13 +11,16 @@ function MovieDetails() {
   const [shows, setShows] = useState([]);
   const [recommendations, setRecommendations] = useState([]);
   const [recBasis, setRecBasis] = useState('');
+  const [reviews, setReviews] = useState([]);
+  const [myRating, setMyRating] = useState(0);
+  const [myReview, setMyReview] = useState('');
+  const [submittingReview, setSubmittingReview] = useState(false);
+  const [canReview, setCanReview] = useState(false);
   const { colors } = useTheme();
   const [imgError, setImgError] = useState(false);
+  const user = JSON.parse(localStorage.getItem('user') || '{}');
 
-  useEffect(() => {
-    fetchMovie();
-    fetchShows();
-  }, [id]);
+  useEffect(() => { fetchMovie(); fetchShows(); fetchReviews(); }, [id]);
 
   const fetchMovie = async () => {
     try {
@@ -42,16 +45,48 @@ function MovieDetails() {
     } catch (error) { console.log(error); }
   };
 
-  if (!movie) {
-    return (
-      <div style={{ background: colors.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎬</div>
-          <p style={{ color: '#94a3b8', fontSize: '18px' }}>Loading movie...</p>
-        </div>
+  const fetchReviews = async () => {
+    try {
+      const res = await API.get(`/reviews/movie/${id}`);
+      setReviews(res.data);
+      // Check if user already reviewed
+      const mine = res.data.find(r => r.user?._id === user._id || r.user === user._id);
+      if (mine) { setMyRating(mine.rating); setMyReview(mine.review || ''); }
+      // Check if user can review (has booking)
+      const bRes = await API.get(`/bookings/user/${user._id}`);
+      const hasBooked = bRes.data.some(b => (b.movie?._id || b.movie) === id && b.status === 'CONFIRMED');
+      setCanReview(hasBooked);
+    } catch (e) { console.log(e); }
+  };
+
+  const handleSubmitReview = async (e) => {
+    e.preventDefault();
+    if (!myRating) return alert('Please select a rating');
+    setSubmittingReview(true);
+    try {
+      await API.post('/reviews', { movieId: id, rating: myRating, review: myReview });
+      alert('Review submitted!');
+      fetchReviews();
+      fetchMovie(); // refresh average rating
+    } catch (err) { alert(err.response?.data?.message || 'Failed to submit review'); }
+    finally { setSubmittingReview(false); }
+  };
+
+  const handleDeleteReview = async (reviewId) => {
+    try {
+      await API.delete(`/reviews/${reviewId}`);
+      fetchReviews(); fetchMovie();
+    } catch (err) { alert('Failed to delete review'); }
+  };
+
+  if (!movie) return (
+    <div style={{ background: colors.bg, minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ textAlign: 'center' }}>
+        <div style={{ fontSize: '48px', marginBottom: '16px' }}>🎬</div>
+        <p style={{ color: '#94a3b8', fontSize: '18px' }}>Loading movie...</p>
       </div>
-    );
-  }
+    </div>
+  );
 
   const availableSeats = shows.reduce((sum, s) => sum + ((s.seats?.length || 50) - (s.bookedSeats?.length || 0)), 0);
 
@@ -144,6 +179,63 @@ function MovieDetails() {
               </div>
             )}
 
+            {/* REVIEWS SECTION */}
+            <div style={{ marginTop: '40px' }}>
+              <h2 style={{ fontSize: '22px', fontWeight: '800', color: 'white', marginBottom: '8px' }}>
+                ⭐ Reviews {movie.totalReviews > 0 && <span style={{ color: '#f59e0b', fontSize: '18px' }}>({movie.averageRating}/5 · {movie.totalReviews} reviews)</span>}
+              </h2>
+              {/* WRITE REVIEW */}
+              {canReview && (
+                <div style={{ background: '#111827', borderRadius: '16px', padding: '24px', marginBottom: '20px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <h3 style={{ margin: '0 0 16px', color: 'white', fontSize: '16px', fontWeight: '700' }}>✍️ Write a Review</h3>
+                  <form onSubmit={handleSubmitReview}>
+                    <div style={{ display: 'flex', gap: '8px', marginBottom: '14px' }}>
+                      {[1,2,3,4,5].map(s => (
+                        <button key={s} type="button" onClick={() => setMyRating(s)}
+                          style={{ fontSize: '28px', background: 'transparent', border: 'none', cursor: 'pointer', filter: s <= myRating ? 'none' : 'grayscale(1)', transform: s <= myRating ? 'scale(1.2)' : 'scale(1)', transition: 'all 0.15s' }}>⭐</button>
+                      ))}
+                      {myRating > 0 && <span style={{ color: '#f59e0b', alignSelf: 'center', fontWeight: '700' }}>{myRating}/5</span>}
+                    </div>
+                    <textarea value={myReview} onChange={e => setMyReview(e.target.value)} placeholder="Share your thoughts (optional)" maxLength={500} rows={3}
+                      style={{ width: '100%', padding: '10px 14px', background: '#0a0f1e', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: 'white', fontSize: '14px', resize: 'vertical', boxSizing: 'border-box', outline: 'none', marginBottom: '12px' }} />
+                    <button type="submit" disabled={submittingReview || !myRating}
+                      style={{ padding: '10px 24px', background: submittingReview ? '#334155' : '#ff004f', border: 'none', borderRadius: '10px', color: 'white', cursor: submittingReview ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '14px' }}>
+                      {submittingReview ? 'Submitting...' : 'Submit Review'}
+                    </button>
+                  </form>
+                </div>
+              )}
+              {/* REVIEWS LIST */}
+              {reviews.length === 0 ? (
+                <p style={{ color: '#64748b', textAlign: 'center', padding: '20px' }}>No reviews yet. Be the first!</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {reviews.map(r => (
+                    <div key={r._id} style={{ background: '#111827', borderRadius: '14px', padding: '18px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          <div style={{ width: '36px', height: '36px', borderRadius: '50%', background: 'linear-gradient(135deg,#ff004f,#6366f1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: '700', fontSize: '14px' }}>
+                            {r.user?.name?.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <p style={{ margin: 0, color: 'white', fontWeight: '600', fontSize: '14px' }}>{r.user?.name}</p>
+                            <p style={{ margin: 0, color: '#64748b', fontSize: '11px' }}>{new Date(r.createdAt).toLocaleDateString('en-IN')}</p>
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                          <span style={{ color: '#f59e0b', fontWeight: '700' }}>{'⭐'.repeat(r.rating)}</span>
+                          {(r.user?._id === user._id || r.user === user._id) && (
+                            <button onClick={() => handleDeleteReview(r._id)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>✕ Delete</button>
+                          )}
+                        </div>
+                      </div>
+                      {r.review && <p style={{ margin: 0, color: '#94a3b8', fontSize: '14px', lineHeight: 1.6 }}>{r.review}</p>}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* RECOMMENDATIONS */}
             {recommendations.length > 0 && (
               <div style={{ marginTop: '40px' }}>
@@ -196,6 +288,12 @@ function MovieDetails() {
                 <div style={{ color: '#10b981', fontSize: '13px', fontWeight: '700', marginBottom: '4px' }}>{shows.length} Show{shows.length !== 1 ? 's' : ''} Available</div>
                 <div style={{ color: '#64748b', fontSize: '12px' }}>{availableSeats} total seats remaining</div>
               </div>
+              {movie.trailerUrl && (
+                <a href={movie.trailerUrl} target="_blank" rel="noopener noreferrer"
+                  style={{ display: 'block', marginTop: '12px', padding: '12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '12px', color: '#ef4444', fontWeight: '700', fontSize: '14px', textAlign: 'center', textDecoration: 'none' }}>
+                  ▶ Watch Trailer
+                </a>
+              )}
             </div>
           </div>
         </div>

@@ -12,13 +12,31 @@ function Home() {
   const { colors } = useTheme();
   const [movies, setMovies] = useState([]);
   const [search, setSearch] = useState('');
+  const [genre, setGenre] = useState('');
+  const [language, setLanguage] = useState('');
+  const [sortBy, setSortBy] = useState('');
   const [hoveredId, setHoveredId] = useState(null);
+  const [allGenres, setAllGenres] = useState([]);
+  const [allLanguages, setAllLanguages] = useState([]);
 
-  useEffect(() => { fetchMovies(); }, []);
+  useEffect(() => { fetchMovies(); }, [search, genre, language, sortBy]);
+
   const fetchMovies = async () => {
-    try { const res = await API.get('/movies'); setMovies(res.data); } catch(e){console.log(e);}
+    try {
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      if (genre) params.append('genre', genre);
+      if (language) params.append('language', language);
+      if (sortBy) params.append('sort', sortBy);
+      const res = await API.get(`/movies?${params.toString()}`);
+      setMovies(res.data);
+      // Extract unique genres and languages for filter dropdowns
+      const genres = [...new Set(res.data.map(m => m.genre).filter(Boolean))];
+      const langs = [...new Set(res.data.map(m => m.language).filter(Boolean))];
+      if (!genre) setAllGenres(genres);
+      if (!language) setAllLanguages(langs);
+    } catch(e){ console.log(e); }
   };
-  const filtered = movies.filter(m => m.title.toLowerCase().includes(search.toLowerCase()));
 
   return (
     <div style={{ background: colors.bg, minHeight: '100vh', transition: 'background 0.3s' }}>
@@ -36,27 +54,44 @@ function Home() {
             <span style={{ fontSize:'18px', marginRight:'10px' }}>🔍</span>
             <input placeholder="Search movies..." value={search} onChange={e=>setSearch(e.target.value)} style={{ flex:1, background:'transparent', border:'none', outline:'none', color:'white', fontSize:'16px' }} />
             <button style={{ background:'linear-gradient(135deg,#ff004f,#cc0040)', border:'none', borderRadius:'40px', padding:'10px 24px', color:'white', fontWeight:'700', cursor:'pointer', fontSize:'14px' }}>Search</button>
-          </div>
-        </div>
+          </div>        </div>
       </div>
 
       <div style={{ padding:'40px 30px' }}>
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'30px' }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:'20px', flexWrap:'wrap', gap:'12px' }}>
           <div>
-            <h2 style={{ fontSize:'28px', fontWeight:'800', color:colors.text, margin:0 }}>{search ? 'Results for "'+search+'"' : '🔥 Trending Now'}</h2>
-            <p style={{ color:colors.textDim, marginTop:'4px', fontSize:'14px' }}>{filtered.length} movie{filtered.length!==1?'s':''} available</p>
+            <h2 style={{ fontSize:'28px', fontWeight:'800', color:colors.text, margin:0 }}>{search ? `Results for "${search}"` : '🔥 Trending Now'}</h2>
+            <p style={{ color:colors.textDim, marginTop:'4px', fontSize:'14px' }}>{movies.length} movie{movies.length!==1?'s':''} available</p>
           </div>
-          <div style={{ background:'rgba(255,0,79,0.1)', border:'1px solid rgba(255,0,79,0.2)', borderRadius:'20px', padding:'6px 16px', fontSize:'13px', color:'#ff004f', fontWeight:'600' }}>{movies.length} Total</div>
+          <div style={{ display:'flex', gap:'8px', flexWrap:'wrap', alignItems:'center' }}>
+            <select value={genre} onChange={e=>setGenre(e.target.value)} style={filterStyle}>
+              <option value="">All Genres</option>
+              {allGenres.map(g=><option key={g} value={g}>{g}</option>)}
+            </select>
+            <select value={language} onChange={e=>setLanguage(e.target.value)} style={filterStyle}>
+              <option value="">All Languages</option>
+              {allLanguages.map(l=><option key={l} value={l}>{l}</option>)}
+            </select>
+            <select value={sortBy} onChange={e=>setSortBy(e.target.value)} style={filterStyle}>
+              <option value="">Sort: Default</option>
+              <option value="rating">Sort: Rating</option>
+              <option value="title">Sort: A-Z</option>
+              <option value="newest">Sort: Newest</option>
+            </select>
+            {(genre || language || sortBy) && (
+              <button onClick={()=>{setGenre('');setLanguage('');setSortBy('');}} style={{ padding:'8px 14px', background:'rgba(239,68,68,0.1)', border:'1px solid rgba(239,68,68,0.3)', borderRadius:'8px', color:'#ef4444', cursor:'pointer', fontSize:'13px', fontWeight:'600' }}>✕ Clear</button>
+            )}
+          </div>
         </div>
-        {filtered.length===0 ? (
+        {movies.length===0 ? (
           <div style={{ textAlign:'center', padding:'80px 20px', color:colors.textDim }}>
             <div style={{ fontSize:'64px', marginBottom:'16px' }}>🎭</div>
             <h3 style={{ fontSize:'22px', color:colors.textMuted }}>No movies found</h3>
-            <p>Try a different search term</p>
+            <p>Try a different search or filter</p>
           </div>
         ) : (
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill,minmax(220px,1fr))', gap:'24px' }}>
-            {filtered.map(movie => (
+            {movies.map(movie => (
               <MovieCard key={movie._id} movie={movie} colors={colors} hovered={hoveredId===movie._id} onHover={setHoveredId} onClick={()=>navigate('/movie/'+movie._id)} />
             ))}
           </div>
@@ -101,4 +136,7 @@ function MovieCard({ movie, colors, hovered, onHover, onClick }) {
   );
 }
 
+const filterStyle = { padding:'8px 12px', background:'#111827', border:'1px solid rgba(255,255,255,0.08)', borderRadius:'8px', color:'white', fontSize:'13px', cursor:'pointer', outline:'none' };
+
 export default Home;
+

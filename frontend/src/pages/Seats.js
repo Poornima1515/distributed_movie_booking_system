@@ -29,8 +29,13 @@ function Seats() {
 
   // Meal add-ons state
   const [availableMeals, setAvailableMeals] = useState([]);
-  const [mealQuantities, setMealQuantities] = useState({}); // { mealId: qty }
+  const [mealQuantities, setMealQuantities] = useState({});
   const [showMeals, setShowMeals] = useState(false);
+
+  // Promo code state
+  const [promoInput, setPromoInput] = useState('');
+  const [promoResult, setPromoResult] = useState(null);
+  const [applyingPromo, setApplyingPromo] = useState(false);
 
   // Waitlist state
   const [joinedWaitlist, setJoinedWaitlist] = useState(false);
@@ -311,6 +316,19 @@ function Seats() {
     .filter(([, qty]) => qty > 0)
     .map(([mealId, quantity]) => ({ mealId, quantity }));
 
+  // ─── PROMO CODE ───────────────────────────────────────────────
+  const handleApplyPromo = async () => {
+    if (!promoInput.trim()) return;
+    setApplyingPromo(true);
+    try {
+      const res = await API.post('/promo/validate', { code: promoInput.trim(), amount: ticketsSubtotal + mealsTotal });
+      setPromoResult(res.data);
+    } catch (err) {
+      setPromoResult(null);
+      alert(err.response?.data?.message || 'Invalid promo code');
+    } finally { setApplyingPromo(false); }
+  };
+
   // ─── WAITLIST ─────────────────────────────────────────────────
   const handleJoinWaitlist = async () => {
     setJoiningWaitlist(true);
@@ -360,7 +378,8 @@ function Seats() {
                 seats: mySeats,
                 showId,
                 userId: currentUserId,
-                meals: mealsPayload
+                meals: mealsPayload,
+                promoCode: promoResult?.code || ''
               }
             );
             if (verifyRes.data.success) {
@@ -395,7 +414,7 @@ function Seats() {
   // ─── DERIVED VALUES ───────────────────────────────────────────
   const ticketPrice = show?.price || 200;
   const ticketsSubtotal = mySeats.length * ticketPrice;
-  const totalPrice = ticketsSubtotal + mealsTotal;
+  const totalPrice = ticketsSubtotal + mealsTotal - (promoResult?.discount || 0);
 
   const displaySeats =
     show?.seats?.length > 0
@@ -550,6 +569,31 @@ function Seats() {
               ))}
             </div>
 
+            {/* PROMO CODE */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  placeholder="Promo code (optional)"
+                  value={promoInput}
+                  onChange={e => { setPromoInput(e.target.value.toUpperCase()); setPromoResult(null); }}
+                  style={{ flex: 1, padding: '8px 12px', background: '#0a0f1e', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: 'white', fontSize: '14px', outline: 'none' }}
+                />
+                <button onClick={handleApplyPromo} disabled={applyingPromo || !promoInput}
+                  style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>
+                  {applyingPromo ? '...' : 'Apply'}
+                </button>
+                {promoResult && (
+                  <button onClick={() => { setPromoResult(null); setPromoInput(''); }}
+                    style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>✕</button>
+                )}
+              </div>
+              {promoResult && (
+                <div style={{ marginTop: '8px', padding: '8px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', fontSize: '13px', fontWeight: '600' }}>
+                  ✓ {promoResult.code} applied — ₹{promoResult.discount} off!
+                </div>
+              )}
+            </div>
+
             {/* MEAL ADD-ONS */}
             {availableMeals.length > 0 && (
               <div style={{ marginBottom: '16px' }}>
@@ -588,6 +632,7 @@ function Seats() {
                 <span style={{ color: '#94a3b8', fontSize: '14px' }}>
                   {mySeats.length} seat{mySeats.length > 1 ? 's' : ''} × Rs.{ticketPrice}
                   {mealsTotal > 0 && ` + meals ₹${mealsTotal}`}
+                  {promoResult && <span style={{ color: '#10b981' }}> − ₹{promoResult.discount} promo</span>}
                 </span>
                 <span style={{ color: 'white', fontWeight: '800', fontSize: '20px', marginLeft: '12px' }}>
                   = Rs.{totalPrice}

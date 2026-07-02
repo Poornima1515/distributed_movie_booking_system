@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
+const rateLimit = require('express-rate-limit');
 
 const connectDB = require('./config/db');
 require('./config/redis');
@@ -18,33 +19,23 @@ const theatreOwnerRoutes = require('./routes/theatreOwnerRoutes');
 const mealRoutes = require('./routes/mealRoutes');
 const loyaltyRoutes = require('./routes/loyaltyRoutes');
 const waitlistRoutes = require('./routes/waitlistRoutes');
+const promoRoutes = require('./routes/promoRoutes');
+const reviewRoutes = require('./routes/reviewRoutes');
+const auditRoutes = require('./routes/auditRoutes');
+const userRoutes = require('./routes/userRoutes');
 const seatSocket = require('./sockets/seatSocket');
 
 const app = express();
 
-// Allow multiple origins: local dev + deployed frontend
-const allowedOrigins = [
-  "http://localhost:3000",
-  process.env.FRONTEND_URL
-].filter(Boolean);
-
 const corsOptions = {
-  origin: (origin, callback) => {
-    // Allow all origins for now — tighten after demo
-    callback(null, true);
-  },
+  origin: (origin, callback) => { callback(null, true); },
   credentials: true
 };
 
 // SOCKET SERVER
 const server = http.createServer(app);
-const io = new Server(server, {
-  cors: corsOptions
-});
-
-// Make io accessible to controllers via app
+const io = new Server(server, { cors: corsOptions });
 app.set('io', io);
-
 seatSocket(io);
 
 // DATABASE
@@ -54,7 +45,31 @@ connectDB();
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// ROUTES
+// ── RATE LIMITERS ────────────────────────────────────────────────
+const authLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, max: 15,
+  message: { message: 'Too many login attempts. Try again in 1 hour.' },
+  standardHeaders: true, legacyHeaders: false
+});
+
+const bookingLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, max: 10,
+  message: { message: 'Too many booking attempts. Try again in 1 hour.' },
+  standardHeaders: true, legacyHeaders: false
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, max: 200,
+  message: { message: 'Too many requests. Try again in 15 minutes.' },
+  standardHeaders: true, legacyHeaders: false
+});
+
+app.use('/api/', apiLimiter);
+app.use('/api/auth', authLimiter);
+app.use('/api/bookings/confirm', bookingLimiter);
+app.use('/api/payment/verify', bookingLimiter);
+
+// ── ROUTES ───────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/movies', movieRoutes);
 app.use('/api/admin', adminRoutes);
@@ -65,14 +80,12 @@ app.use('/api/theatre-owner', theatreOwnerRoutes);
 app.use('/api/meals', mealRoutes);
 app.use('/api/loyalty', loyaltyRoutes);
 app.use('/api/waitlist', waitlistRoutes);
+app.use('/api/promo', promoRoutes);
+app.use('/api/reviews', reviewRoutes);
+app.use('/api/audit', auditRoutes);
+app.use('/api/users', userRoutes);
 
-// TEST ROUTE
-app.get('/', (req, res) => {
-  res.send('Distributed Booking Server Running');
-});
+app.get('/', (req, res) => res.send('Distributed Booking Server Running'));
 
-// SERVER
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));

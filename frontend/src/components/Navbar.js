@@ -50,6 +50,7 @@ function Navbar() {
         {[
           { label: '🏠 Home', path: '/home' },
           { label: '🎟️ My Bookings', path: '/bookings' },
+          { label: '👤 Profile', path: '/profile' },
           ...(user?.role === 'admin' ? [{ label: '⚙️ Admin', path: '/admin' }] : []),
           ...(user?.role === 'theatreOwner' || user?.role === 'admin' ? [{ label: '🎭 My Theatre', path: '/theatre-owner' }] : [])
         ].map(({ label, path }) => (
