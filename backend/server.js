@@ -22,6 +22,7 @@ const promoRoutes = require('./routes/promoRoutes');
 const reviewRoutes = require('./routes/reviewRoutes');
 const auditRoutes = require('./routes/auditRoutes');
 const userRoutes = require('./routes/userRoutes');
+const testRoutes = require('./routes/testRoutes');
 const seatSocket = require('./sockets/seatSocket');
 
 const app = express();
@@ -91,6 +92,7 @@ app.use('/api/promo', promoRoutes);
 app.use('/api/reviews', reviewRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/test', testRoutes);
 
 app.get('/', (req, res) => res.send('Distributed Booking Server Running'));
 
