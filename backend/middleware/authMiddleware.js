@@ -24,7 +24,8 @@ const adminOnly = (req, res, next) => {
 };
 
 const theatreOwnerOnly = (req, res, next) => {
-  if (req.user?.role !== 'theatreOwner') {
+  // Admin can also access theatre owner routes (they may own a theatre too)
+  if (req.user?.role !== 'theatreOwner' && req.user?.role !== 'admin') {
     return res.status(403).json({ message: 'Theatre owner access required' });
   }
   next();

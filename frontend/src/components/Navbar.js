@@ -51,7 +51,7 @@ function Navbar() {
           { label: '🏠 Home', path: '/home' },
           { label: '🎟️ My Bookings', path: '/bookings' },
           ...(user?.role === 'admin' ? [{ label: '⚙️ Admin', path: '/admin' }] : []),
-          ...(user?.role === 'theatreOwner' ? [{ label: '🎭 My Theatre', path: '/theatre-owner' }] : [])
+          ...(user?.role === 'theatreOwner' || user?.role === 'admin' ? [{ label: '🎭 My Theatre', path: '/theatre-owner' }] : [])
         ].map(({ label, path }) => (
           <button key={path} onClick={() => navigate(path)} style={{
             background: isActive(path) ? 'rgba(255,0,79,0.12)' : 'transparent',

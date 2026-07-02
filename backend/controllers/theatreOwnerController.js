@@ -8,7 +8,7 @@ const User = require('../models/User');
 const getMyTheatre = async (req, res) => {
   try {
     const theatre = await Theatre.findOne({ owner: req.user.id }).populate('owner', 'name email');
-    if (!theatre) return res.status(404).json({ message: 'No theatre assigned to your account' });
+    if (!theatre) return res.status(404).json({ message: 'No theatre assigned to your account. Ask admin to assign one.' });
     res.json(theatre);
   } catch (error) {
     res.status(500).json({ message: error.message });

@@ -167,7 +167,8 @@ const cancelBooking = async (req, res) => {
   try {
     const { bookingId } = req.params;
     const booking = await Booking.findById(bookingId)
-      .populate('movie').populate('theatre').populate('show');
+      .populate('movie').populate('theatre').populate('show')
+      .populate('user', 'name email');
 
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
     if (booking.status === 'CANCELLED') return res.status(400).json({ message: 'Booking already cancelled' });
@@ -209,17 +210,18 @@ const cancelBooking = async (req, res) => {
       showId: booking.show._id || booking.show
     });
 
-    // SEND CANCELLATION EMAIL (non-blocking, after response)
-    if (booking.userEmail) {
+    // SEND CANCELLATION EMAIL — use userEmail field OR populated user email
+    const emailTo = booking.userEmail || booking.user?.email;
+    if (emailTo) {
       sendCancellationEmail({
-        to: booking.userEmail,
+        to: emailTo,
         booking,
         movie: booking.movie,
         theatre: booking.theatre
       }).catch(err => console.error('Email error (cancellation):', err.message));
     }
 
-    // NOTIFY WAITLIST — check if anyone is waiting for this show
+    // NOTIFY WAITLIST
     const waitlistEntries = await Waitlist.find({
       show: booking.show._id || booking.show,
       status: 'waiting'
@@ -237,8 +239,6 @@ const cancelBooking = async (req, res) => {
           theatre: entry.show?.theatre,
           show: entry.show
         }).catch(err => console.error('Email error (waitlist):', err.message));
-
-        // Update status to notified
         entry.status = 'notified';
         entry.notifiedAt = new Date();
         await entry.save();
