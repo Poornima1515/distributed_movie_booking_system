@@ -24,6 +24,9 @@ function AdminDashboard() {
   const [analytics, setAnalytics] = useState(null);
   const [liveActivity, setLiveActivity] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [users, setUsers] = useState([]);
+  const [assigningTheatre, setAssigningTheatre] = useState(null); // theatreId being assigned
+  const [assignForm, setAssignForm] = useState({ ownerId: '', commissionRate: 10 });
   const { colors } = useTheme();
   const feedRef = useRef(null);
 
@@ -42,8 +45,25 @@ function AdminDashboard() {
     try { const res = await API.get('/analytics'); setAnalytics(res.data); } catch(e){console.log(e);}
   }, []);
 
+  const fetchUsers = useCallback(async () => {
+    try { const res = await API.get('/admin/users'); setUsers(res.data); } catch(e){}
+  }, []);
+
+  const handleAssignOwner = async (theatreId) => {
+    try {
+      await API.post('/admin/assign-owner', {
+        theatreId,
+        ownerId: assignForm.ownerId || null,
+        commissionRate: Number(assignForm.commissionRate)
+      });
+      alert('Theatre owner assigned successfully!');
+      setAssigningTheatre(null);
+      fetchData();
+    } catch(e) { alert(e.response?.data?.message || 'Failed to assign owner'); }
+  };
+
   useEffect(() => {
-    fetchData(); fetchAnalytics();
+    fetchData(); fetchAnalytics(); fetchUsers();
     socket.emit('joinAdmin');
     socket.on('newBookingActivity', (data) => {
       setLiveActivity(prev => [data,...prev].slice(0,50));
@@ -61,7 +81,7 @@ function AdminDashboard() {
       socket.off('newBookingActivity');
       clearInterval(pollInterval);
     };
-  }, [fetchData, fetchAnalytics]);
+  }, [fetchData, fetchAnalytics, fetchUsers]);
 
   const deleteMovie = async (id) => {
     if (!window.confirm('Delete this movie?')) return;
@@ -316,7 +336,47 @@ function AdminDashboard() {
                     <h3 style={{margin:'0 0 8px',color:'white'}}>{theatre.name}</h3>
                     <p style={{color:'#94a3b8',margin:'4px 0',fontSize:'13px'}}>{theatre.city}</p>
                     <p style={{color:'#94a3b8',margin:'4px 0',fontSize:'13px'}}>{theatre.screens} Screen(s)</p>
-                    <button onClick={()=>deleteTheatre(theatre._id)} style={{...deleteBtnStyle,width:'100%',marginTop:'14px'}}>Delete Theatre</button>
+                    {theatre.owner ? (
+                      <p style={{color:'#10b981',margin:'4px 0',fontSize:'13px'}}>
+                        👤 Owner: <span style={{fontWeight:'700'}}>{theatre.owner?.name || 'Assigned'}</span>
+                        <span style={{color:'#64748b',marginLeft:'8px'}}>({theatre.commissionRate || 10}% commission)</span>
+                      </p>
+                    ) : (
+                      <p style={{color:'#64748b',margin:'4px 0',fontSize:'13px'}}>👤 No owner assigned</p>
+                    )}
+
+                    {/* ASSIGN OWNER PANEL */}
+                    {assigningTheatre === theatre._id ? (
+                      <div style={{marginTop:'12px',padding:'14px',background:'rgba(255,255,255,0.03)',borderRadius:'10px',border:'1px solid rgba(255,255,255,0.08)'}}>
+                        <p style={{color:'#94a3b8',fontSize:'12px',margin:'0 0 10px',fontWeight:'700'}}>ASSIGN OWNER</p>
+                        <select
+                          value={assignForm.ownerId}
+                          onChange={e=>setAssignForm(p=>({...p,ownerId:e.target.value}))}
+                          style={{width:'100%',padding:'8px',background:'#0a0f1e',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'6px',color:'white',fontSize:'13px',marginBottom:'8px',boxSizing:'border-box'}}
+                        >
+                          <option value=''>-- Select User --</option>
+                          {users.map(u=>(
+                            <option key={u._id} value={u._id}>{u.name} ({u.email}) — {u.role}</option>
+                          ))}
+                        </select>
+                        <input
+                          type='number'
+                          placeholder='Commission % (default 10)'
+                          value={assignForm.commissionRate}
+                          onChange={e=>setAssignForm(p=>({...p,commissionRate:e.target.value}))}
+                          style={{width:'100%',padding:'8px',background:'#0a0f1e',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'6px',color:'white',fontSize:'13px',marginBottom:'10px',boxSizing:'border-box'}}
+                        />
+                        <div style={{display:'flex',gap:'8px'}}>
+                          <button onClick={()=>handleAssignOwner(theatre._id)} style={{...addBtnStyle,flex:1,padding:'8px',fontSize:'12px'}}>Assign</button>
+                          <button onClick={()=>setAssigningTheatre(null)} style={{flex:1,padding:'8px',background:'transparent',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'8px',color:'#94a3b8',cursor:'pointer',fontSize:'12px'}}>Cancel</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{display:'flex',gap:'8px',marginTop:'14px'}}>
+                        <button onClick={()=>{setAssigningTheatre(theatre._id);setAssignForm({ownerId:theatre.owner?._id||'',commissionRate:theatre.commissionRate||10});}} style={{...editBtnStyle,flex:1}}>👤 Assign Owner</button>
+                        <button onClick={()=>deleteTheatre(theatre._id)} style={deleteBtnStyle}>Delete</button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
