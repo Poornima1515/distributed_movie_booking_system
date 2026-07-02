@@ -20,6 +20,8 @@ function Bookings() {
   const [expandedId, setExpandedId] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
   const [loyaltyData, setLoyaltyData] = useState(null);
+  const [redeemInput, setRedeemInput] = useState('');
+  const [redeeming, setRedeeming] = useState(false);
   const navigate = useNavigate();
   const { colors } = useTheme();
   const user = JSON.parse(localStorage.getItem('user'));
@@ -54,6 +56,21 @@ function Bookings() {
   }, [fetchBookings]);
 
   const toggleQR = (id) => setExpandedId(expandedId === id ? null : id);
+
+  const handleRedeemPoints = async () => {
+    const pts = Number(redeemInput);
+    if (!pts || pts < 100) return alert('Minimum 100 points required');
+    if (pts % 100 !== 0) return alert('Must be in multiples of 100');
+    setRedeeming(true);
+    try {
+      const res = await API.post('/loyalty/redeem', { pointsToRedeem: pts });
+      alert(res.data.message);
+      setRedeemInput('');
+      fetchLoyalty();
+    } catch (err) {
+      alert(err.response?.data?.message || 'Redemption failed');
+    } finally { setRedeeming(false); }
+  };
 
   const handleCancel = async (booking) => {
     if (!window.confirm(`Cancel booking for ${booking.movie?.title}?\nYou will receive a 75% refund of ₹${Math.round(booking.totalAmount * 0.75)}.`)) return;
@@ -118,18 +135,39 @@ function Bookings() {
 
         {/* LOYALTY POINTS CARD */}
         {loyaltyData && (
-          <div style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.1))', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '20px', padding: '20px 24px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>🌟</div>
-              <div>
-                <p style={{ color: '#818cf8', fontWeight: '800', fontSize: '18px', margin: 0 }}>{loyaltyData.loyaltyPoints?.toLocaleString()} Points</p>
-                <p style={{ color: '#64748b', fontSize: '13px', margin: '3px 0 0' }}>Worth ₹{loyaltyData.pointsValue || 0} in discounts • {loyaltyData.totalSpent?.toLocaleString()} total spent</p>
+          <div style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.1))', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '20px', padding: '20px 24px', marginBottom: '24px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>🌟</div>
+                <div>
+                  <p style={{ color: '#818cf8', fontWeight: '800', fontSize: '18px', margin: 0 }}>{(loyaltyData.loyaltyPoints || 0).toLocaleString()} Points</p>
+                  <p style={{ color: '#64748b', fontSize: '13px', margin: '3px 0 0' }}>Worth ₹{loyaltyData.pointsValue || 0} · Total spent ₹{(loyaltyData.totalSpent || 0).toLocaleString()}</p>
+                </div>
+              </div>
+              <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'right' }}>
+                <p style={{ margin: 0 }}>1 point per ₹10 spent</p>
+                <p style={{ margin: '4px 0 0', color: '#818cf8' }}>100 points = ₹50 off</p>
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'right' }}>
-              <p style={{ margin: 0 }}>1 point per ₹10 spent</p>
-              <p style={{ margin: '4px 0 0', color: '#818cf8' }}>100 points = ₹50 off</p>
-            </div>
+            {/* REDEEM SECTION */}
+            {(loyaltyData.loyaltyPoints || 0) >= 100 && (
+              <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', paddingTop: '14px', borderTop: '1px solid rgba(99,102,241,0.2)' }}>
+                <input
+                  type="number" step="100" min="100" max={loyaltyData.loyaltyPoints}
+                  placeholder="Points to redeem (min 100)"
+                  value={redeemInput}
+                  onChange={e => setRedeemInput(e.target.value)}
+                  style={{ padding: '8px 12px', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', color: 'white', fontSize: '14px', flex: 1, minWidth: '200px', outline: 'none' }}
+                />
+                <span style={{ color: '#818cf8', fontSize: '13px', whiteSpace: 'nowrap' }}>
+                  = ₹{redeemInput ? Math.floor(Number(redeemInput) / 100) * 50 : 0} off
+                </span>
+                <button onClick={handleRedeemPoints} disabled={redeeming || !redeemInput}
+                  style={{ padding: '8px 20px', background: redeeming ? '#334155' : '#6366f1', border: 'none', borderRadius: '8px', color: 'white', cursor: redeeming ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '14px' }}>
+                  {redeeming ? '⏳ Redeeming...' : 'Redeem'}
+                </button>
+              </div>
+            )}
           </div>
         )}
 

@@ -218,7 +218,10 @@ exports.downloadTicket = async (req, res) => {
       .populate('movie').populate('theatre').populate('show');
     if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
+    console.log('Generating PDF for booking:', booking.bookingId);
     const pdfBuffer = await generateTicketPDF(booking, booking.movie, booking.theatre, booking.show);
+    console.log('PDF generated, size:', pdfBuffer.length);
+
     res.set({
       'Content-Type': 'application/pdf',
       'Content-Disposition': `attachment; filename="CineVerse-Ticket-${booking.bookingId?.slice(0, 8)}.pdf"`,
@@ -228,7 +231,7 @@ exports.downloadTicket = async (req, res) => {
     });
     res.send(pdfBuffer);
   } catch (error) {
-    console.error('PDF error:', error.message);
-    res.status(500).json({ message: error.message });
+    console.error('PDF generation error:', error.message, error.stack);
+    res.status(500).json({ message: 'PDF generation failed: ' + error.message });
   }
 };
