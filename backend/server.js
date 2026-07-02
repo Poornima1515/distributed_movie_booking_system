@@ -42,6 +42,7 @@ seatSocket(io);
 connectDB();
 
 // MIDDLEWARES
+app.set('trust proxy', 1); // Required for rate-limiting behind Render/Vercel proxy
 app.use(cors(corsOptions));
 app.use(express.json());
 
