@@ -24,15 +24,20 @@ const showSchema = new mongoose.Schema({
   bookedSeats: {
     type: [String],
     default: []
-  }
+  },
+
+  // Seat categories (Gold, Silver, Bronze)
+  seatCategories: [{
+    name: { type: String }, // 'Gold', 'Silver', 'Bronze'
+    seats: [String],
+    price: Number,
+    color: String // '#ffd700', '#c0c0c0', '#cd7f32'
+  }]
 
 }, {
   timestamps: true
 });
 
-const Show = mongoose.model(
-  'Show',
-  showSchema
-);
+const Show = mongoose.model('Show', showSchema);
 
 module.exports = Show;

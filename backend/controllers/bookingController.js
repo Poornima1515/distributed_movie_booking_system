@@ -1,7 +1,10 @@
 ﻿const Booking = require('../models/Booking');
 const Show = require('../models/Show');
+const Waitlist = require('../models/Waitlist');
+const User = require('../models/User');
 const redis = require('../config/redis');
 const { v4: uuidv4 } = require('uuid');
+const { sendCancellationEmail, sendWaitlistEmail } = require('../utils/emailService');
 
 // LOCK SEATS
 const lockSeats = async (req, res) => {
@@ -205,6 +208,42 @@ const cancelBooking = async (req, res) => {
       seats: booking.seats,
       showId: booking.show._id || booking.show
     });
+
+    // SEND CANCELLATION EMAIL (non-blocking, after response)
+    if (booking.userEmail) {
+      sendCancellationEmail({
+        to: booking.userEmail,
+        booking,
+        movie: booking.movie,
+        theatre: booking.theatre
+      }).catch(err => console.error('Email error (cancellation):', err.message));
+    }
+
+    // NOTIFY WAITLIST — check if anyone is waiting for this show
+    const waitlistEntries = await Waitlist.find({
+      show: booking.show._id || booking.show,
+      status: 'waiting'
+    }).populate('user', 'name email').populate({
+      path: 'show',
+      populate: [{ path: 'movie' }, { path: 'theatre' }]
+    });
+
+    for (const entry of waitlistEntries) {
+      if (entry.user?.email) {
+        sendWaitlistEmail({
+          to: entry.user.email,
+          userName: entry.user.name,
+          movie: entry.show?.movie,
+          theatre: entry.show?.theatre,
+          show: entry.show
+        }).catch(err => console.error('Email error (waitlist):', err.message));
+
+        // Update status to notified
+        entry.status = 'notified';
+        entry.notifiedAt = new Date();
+        await entry.save();
+      }
+    }
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

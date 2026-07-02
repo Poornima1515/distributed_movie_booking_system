@@ -10,8 +10,12 @@ const {
   getShows,
   getShowById,
   deleteShow,
-  migrateSeats
+  migrateSeats,
+  assignTheatreOwner,
+  getUsers
 } = require('../controllers/adminController');
+
+const { protect, adminOnly } = require('../middleware/authMiddleware');
 
 // THEATRE ROUTES
 router.post('/theatre', addTheatre);
@@ -26,5 +30,11 @@ router.delete('/show/:id', deleteShow);
 
 // MIGRATION ROUTE
 router.post('/migrate-seats', migrateSeats);
+
+// THEATRE OWNER ASSIGNMENT (admin only)
+router.post('/assign-owner', protect, adminOnly, assignTheatreOwner);
+
+// GET ALL USERS (admin only)
+router.get('/users', protect, adminOnly, getUsers);
 
 module.exports = router;

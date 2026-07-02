@@ -20,17 +20,25 @@ const userSchema = new mongoose.Schema({
 
   role: {
     type: String,
-    enum: ['user', 'admin'],
+    enum: ['user', 'admin', 'theatreOwner'],
     default: 'user'
+  },
+
+  // Loyalty program
+  loyaltyPoints: {
+    type: Number,
+    default: 0
+  },
+
+  totalSpent: {
+    type: Number,
+    default: 0
   }
 
 }, {
   timestamps: true
 });
 
-const User = mongoose.model(
-  'User',
-  userSchema
-);
+const User = mongoose.model('User', userSchema);
 
 module.exports = User;

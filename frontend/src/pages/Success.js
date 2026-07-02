@@ -9,6 +9,7 @@ function Success() {
   const location = useLocation();
   const navigate = useNavigate();
   const booking = location.state?.booking;
+  const loyaltyPointsEarned = location.state?.loyaltyPointsEarned || booking?.loyaltyPointsEarned || 0;
 
   const handleDownloadPDF = async () => {
     try {
@@ -52,6 +53,17 @@ function Success() {
           <h1 style={{ color: '#10b981', margin: '0 0 6px', fontSize: '28px', fontWeight: '900' }}>Booking Confirmed!</h1>
           <p style={{ color: '#94a3b8', marginBottom: '28px', fontSize: '14px' }}>Your tickets are ready. Check your email for the ticket.</p>
 
+          {/* LOYALTY POINTS EARNED */}
+          {loyaltyPointsEarned > 0 && (
+            <div style={{ background: 'rgba(99,102,241,0.1)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '14px', padding: '14px 20px', marginBottom: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+              <span style={{ fontSize: '24px' }}>🌟</span>
+              <div>
+                <p style={{ color: '#818cf8', fontWeight: '800', fontSize: '16px', margin: 0 }}>+{loyaltyPointsEarned} Loyalty Points Earned!</p>
+                <p style={{ color: '#64748b', fontSize: '12px', margin: '3px 0 0' }}>Keep booking to earn more rewards</p>
+              </div>
+            </div>
+          )}
+
           {/* QR CODE */}
           <div style={{ background: 'white', padding: '20px', display: 'inline-block', borderRadius: '16px', marginBottom: '28px', boxShadow: '0 8px 30px rgba(0,0,0,0.3)' }}>
             <QRCode value={qrData} size={180} />
@@ -62,6 +74,7 @@ function Success() {
             <DetailRow label="Booking ID" value={booking.bookingId} mono />
             <DetailRow label="Seats" value={booking.seats?.join(', ')} />
             <DetailRow label="Amount" value={`₹${booking.totalAmount}`} green />
+            {booking.mealsTotal > 0 && <DetailRow label="Meals" value={`₹${booking.mealsTotal}`} />}
             {booking.movie?.title && <DetailRow label="Movie" value={booking.movie.title} />}
             {booking.theatre?.name && <DetailRow label="Theatre" value={booking.theatre.name} />}
           </div>

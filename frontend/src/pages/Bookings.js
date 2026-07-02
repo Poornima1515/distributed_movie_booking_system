@@ -19,6 +19,7 @@ function Bookings() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [cancellingId, setCancellingId] = useState(null);
+  const [loyaltyData, setLoyaltyData] = useState(null);
   const navigate = useNavigate();
   const { colors } = useTheme();
   const user = JSON.parse(localStorage.getItem('user'));
@@ -35,7 +36,16 @@ function Bookings() {
     }
   }, [user._id]);
 
-  useEffect(() => { fetchBookings(); }, [fetchBookings]);
+  const fetchLoyalty = useCallback(async () => {
+    try {
+      const res = await API.get('/loyalty/points');
+      setLoyaltyData(res.data);
+    } catch {
+      // Ignore if not available
+    }
+  }, []);
+
+  useEffect(() => { fetchBookings(); fetchLoyalty(); }, [fetchBookings, fetchLoyalty]);
 
   // Listen for seat reopened events to refresh
   useEffect(() => {
@@ -106,6 +116,23 @@ function Bookings() {
           </div>
         </div>
 
+        {/* LOYALTY POINTS CARD */}
+        {loyaltyData && (
+          <div style={{ background: 'linear-gradient(135deg,rgba(99,102,241,0.15),rgba(139,92,246,0.1))', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '20px', padding: '20px 24px', marginBottom: '24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              <div style={{ width: '48px', height: '48px', borderRadius: '12px', background: 'rgba(99,102,241,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '24px' }}>🌟</div>
+              <div>
+                <p style={{ color: '#818cf8', fontWeight: '800', fontSize: '18px', margin: 0 }}>{loyaltyData.loyaltyPoints?.toLocaleString()} Points</p>
+                <p style={{ color: '#64748b', fontSize: '13px', margin: '3px 0 0' }}>Worth ₹{loyaltyData.pointsValue || 0} in discounts • {loyaltyData.totalSpent?.toLocaleString()} total spent</p>
+              </div>
+            </div>
+            <div style={{ fontSize: '12px', color: '#64748b', textAlign: 'right' }}>
+              <p style={{ margin: 0 }}>1 point per ₹10 spent</p>
+              <p style={{ margin: '4px 0 0', color: '#818cf8' }}>100 points = ₹50 off</p>
+            </div>
+          </div>
+        )}
+
         {loading ? (
           <div style={{ textAlign: 'center', padding: '80px', color: '#94a3b8' }}>
             <div style={{ fontSize: '48px', marginBottom: '16px' }}>⏳</div>
@@ -166,6 +193,16 @@ function Bookings() {
                           </span>
                         )}
                       </p>
+                      {!isCancelled && booking.loyaltyPointsEarned > 0 && (
+                        <p style={{ color: '#94a3b8', margin: '4px 0', fontSize: '13px' }}>
+                          🌟 Points: <span style={{ color: '#818cf8', fontWeight: '700' }}>+{booking.loyaltyPointsEarned}</span>
+                        </p>
+                      )}
+                      {booking.mealsTotal > 0 && (
+                        <p style={{ color: '#94a3b8', margin: '4px 0', fontSize: '13px' }}>
+                          🍿 Meals: <span style={{ color: '#f59e0b', fontWeight: '600' }}>₹{booking.mealsTotal}</span>
+                        </p>
+                      )}
                       <p style={{ color: '#334155', margin: '4px 0', fontSize: '11px', fontFamily: 'monospace' }}>
                         ID: {booking.bookingId}
                       </p>

@@ -6,6 +6,8 @@ import axios from 'axios';
 import { io } from 'socket.io-client';
 import { useTheme } from '../context/ThemeContext';
 
+const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
 // Single socket instance outside component so it persists across renders
 const SOCKET_URL = process.env.REACT_APP_API_URL
   ? process.env.REACT_APP_API_URL.replace('/api', '')
@@ -24,6 +26,15 @@ function Seats() {
   const [seatOwners, setSeatOwners] = useState({});
   const [bookedSeats, setBookedSeats] = useState([]);
   const [timeLeft, setTimeLeft] = useState(LOCK_DURATION);
+
+  // Meal add-ons state
+  const [availableMeals, setAvailableMeals] = useState([]);
+  const [mealQuantities, setMealQuantities] = useState({}); // { mealId: qty }
+  const [showMeals, setShowMeals] = useState(false);
+
+  // Waitlist state
+  const [joinedWaitlist, setJoinedWaitlist] = useState(false);
+  const [joiningWaitlist, setJoiningWaitlist] = useState(false);
 
   // Track when the current user locked their seats (timestamp)
   const lockStartRef = useRef(null);
@@ -70,6 +81,15 @@ function Seats() {
       clearInterval(pollInterval);
     };
   }, [fetchShow, fetchLockedSeats, showId]);
+
+  // ─── FETCH MEALS ─────────────────────────────────────────────
+  useEffect(() => {
+    if (show?.theatre?._id) {
+      API.get(`/meals?theatre=${show.theatre._id}`)
+        .then(res => setAvailableMeals(res.data))
+        .catch(() => {});
+    }
+  }, [show]);
 
   // ─── SOCKET EVENTS ────────────────────────────────────────────
   useEffect(() => {
@@ -270,6 +290,41 @@ function Seats() {
     }
   };
 
+  // ─── MEAL HELPERS ────────────────────────────────────────────
+  const setMealQty = (mealId, delta) => {
+    setMealQuantities(prev => {
+      const current = prev[mealId] || 0;
+      const next = Math.max(0, current + delta);
+      if (next === 0) {
+        const { [mealId]: _, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [mealId]: next };
+    });
+  };
+
+  const mealsTotal = availableMeals.reduce((sum, meal) => {
+    return sum + (meal.price * (mealQuantities[meal._id] || 0));
+  }, 0);
+
+  const mealsPayload = Object.entries(mealQuantities)
+    .filter(([, qty]) => qty > 0)
+    .map(([mealId, quantity]) => ({ mealId, quantity }));
+
+  // ─── WAITLIST ─────────────────────────────────────────────────
+  const handleJoinWaitlist = async () => {
+    setJoiningWaitlist(true);
+    try {
+      await API.post('/waitlist/join', { showId, seats: 1 });
+      setJoinedWaitlist(true);
+      alert('You\'ve been added to the waitlist! We\'ll email you when a seat becomes available.');
+    } catch (err) {
+      alert(err.response?.data?.message || 'Failed to join waitlist');
+    } finally {
+      setJoiningWaitlist(false);
+    }
+  };
+
   // ─── PAYMENT ─────────────────────────────────────────────────
   const handlePayment = async () => {
     if (mySeats.length === 0) return;
@@ -285,8 +340,8 @@ function Seats() {
 
     try {
       const { data: order } = await axios.post(
-        `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/payment/create-order`,
-        { amount: totalPrice }
+        `${API_BASE}/payment/create-order`,
+        { amount: totalPrice, showId, seats: mySeats }
       );
 
       const options = {
@@ -299,8 +354,14 @@ function Seats() {
         handler: async (response) => {
           try {
             const verifyRes = await axios.post(
-              `${process.env.REACT_APP_API_URL || 'http://localhost:5000/api'}/payment/verify`,
-              { ...response, seats: mySeats, showId, userId: currentUserId }
+              `${API_BASE}/payment/verify`,
+              {
+                ...response,
+                seats: mySeats,
+                showId,
+                userId: currentUserId,
+                meals: mealsPayload
+              }
             );
             if (verifyRes.data.success) {
               socket.emit('bookingConfirmed', {
@@ -310,7 +371,12 @@ function Seats() {
                 movieTitle: show.movie?.title,
                 theatreName: show.theatre?.name
               });
-              navigate('/success', { state: { booking: verifyRes.data.booking } });
+              navigate('/success', {
+                state: {
+                  booking: verifyRes.data.booking,
+                  loyaltyPointsEarned: verifyRes.data.loyaltyPointsEarned
+                }
+              });
             }
           } catch {
             alert('Payment verification failed.');
@@ -328,7 +394,8 @@ function Seats() {
 
   // ─── DERIVED VALUES ───────────────────────────────────────────
   const ticketPrice = show?.price || 200;
-  const totalPrice = mySeats.length * ticketPrice;
+  const ticketsSubtotal = mySeats.length * ticketPrice;
+  const totalPrice = ticketsSubtotal + mealsTotal;
 
   const displaySeats =
     show?.seats?.length > 0
@@ -482,10 +549,45 @@ function Seats() {
                 </span>
               ))}
             </div>
+
+            {/* MEAL ADD-ONS */}
+            {availableMeals.length > 0 && (
+              <div style={{ marginBottom: '16px' }}>
+                <button
+                  onClick={() => setShowMeals(p => !p)}
+                  style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: '10px', color: '#f59e0b', padding: '8px 16px', cursor: 'pointer', fontWeight: '700', fontSize: '13px', marginBottom: showMeals ? '14px' : 0 }}
+                >
+                  🍿 {showMeals ? 'Hide' : 'Add'} Meals & Snacks {mealsTotal > 0 && `(₹${mealsTotal} added)`}
+                </button>
+                {showMeals && (
+                  <div style={{ background: 'rgba(0,0,0,0.2)', borderRadius: '12px', padding: '16px', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      {availableMeals.map(meal => (
+                        <div key={meal._id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
+                          <div style={{ flex: 1 }}>
+                            <span style={{ color: 'white', fontSize: '14px', fontWeight: '600' }}>{meal.name}</span>
+                            <span style={{ color: '#64748b', fontSize: '12px', marginLeft: '8px' }}>({meal.category})</span>
+                            {meal.description && <p style={{ color: '#64748b', fontSize: '12px', margin: '2px 0 0' }}>{meal.description}</p>}
+                          </div>
+                          <span style={{ color: '#f59e0b', fontWeight: '700', fontSize: '14px', minWidth: '50px', textAlign: 'right' }}>₹{meal.price}</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <button onClick={() => setMealQty(meal._id, -1)} style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', fontSize: '16px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>-</button>
+                            <span style={{ color: 'white', fontWeight: '700', minWidth: '20px', textAlign: 'center' }}>{mealQuantities[meal._id] || 0}</span>
+                            <button onClick={() => setMealQty(meal._id, 1)} style={{ width: '28px', height: '28px', borderRadius: '6px', background: '#1e293b', border: '1px solid rgba(255,255,255,0.1)', color: 'white', cursor: 'pointer', fontSize: '16px', fontWeight: '700', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
               <div>
                 <span style={{ color: '#94a3b8', fontSize: '14px' }}>
                   {mySeats.length} seat{mySeats.length > 1 ? 's' : ''} × Rs.{ticketPrice}
+                  {mealsTotal > 0 && ` + meals ₹${mealsTotal}`}
                 </span>
                 <span style={{ color: 'white', fontWeight: '800', fontSize: '20px', marginLeft: '12px' }}>
                   = Rs.{totalPrice}
@@ -501,9 +603,33 @@ function Seats() {
             </div>
           </div>
         ) : (
-          <p style={{ textAlign: 'center', color: '#64748b', fontSize: '14px' }}>
-            Click on an available seat to select it
-          </p>
+          <div style={{ textAlign: 'center' }}>
+            {/* FULLY BOOKED - SHOW WAITLIST */}
+            {show && bookedSeats.length >= displaySeats.length ? (
+              <div style={{ background: 'rgba(239,68,68,0.05)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: '16px', padding: '32px' }}>
+                <div style={{ fontSize: '48px', marginBottom: '12px' }}>😔</div>
+                <h3 style={{ color: '#ef4444', margin: '0 0 8px', fontWeight: '800' }}>Show Fully Booked</h3>
+                <p style={{ color: '#94a3b8', margin: '0 0 20px', fontSize: '14px' }}>All seats are currently taken. Join the waitlist and we'll notify you if a seat opens up!</p>
+                {joinedWaitlist ? (
+                  <div style={{ background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '12px', padding: '14px 24px', color: '#10b981', fontWeight: '700', fontSize: '15px' }}>
+                    ✓ You're on the waitlist!
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleJoinWaitlist}
+                    disabled={joiningWaitlist}
+                    style={{ background: 'linear-gradient(135deg,#6366f1,#4f46e5)', border: 'none', borderRadius: '12px', padding: '14px 32px', color: 'white', cursor: joiningWaitlist ? 'not-allowed' : 'pointer', fontSize: '15px', fontWeight: '700', opacity: joiningWaitlist ? 0.7 : 1 }}
+                  >
+                    {joiningWaitlist ? '⏳ Joining...' : '📋 Join Waitlist'}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <p style={{ color: '#64748b', fontSize: '14px' }}>
+                Click on an available seat to select it
+              </p>
+            )}
+          </div>
         )}
 
       </div>

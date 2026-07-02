@@ -1,5 +1,6 @@
 ﻿const Theatre = require('../models/Theatre');
 const Show = require('../models/Show');
+const User = require('../models/User');
 
 // ADD THEATRE
 const addTheatre = async (req, res) => {
@@ -144,6 +145,50 @@ const migrateSeats = async (req, res) => {
   }
 };
 
+// ASSIGN THEATRE OWNER (admin only)
+const assignTheatreOwner = async (req, res) => {
+  try {
+    const { theatreId, ownerId, commissionRate } = req.body;
+
+    const theatre = await Theatre.findById(theatreId);
+    if (!theatre) return res.status(404).json({ message: 'Theatre not found' });
+
+    if (ownerId) {
+      const owner = await User.findById(ownerId);
+      if (!owner) return res.status(404).json({ message: 'User not found' });
+
+      // Promote user to theatreOwner role
+      owner.role = 'theatreOwner';
+      await owner.save();
+
+      theatre.owner = ownerId;
+    } else {
+      theatre.owner = null;
+    }
+
+    if (commissionRate !== undefined) {
+      theatre.commissionRate = commissionRate;
+    }
+
+    await theatre.save();
+    await theatre.populate('owner', 'name email role');
+
+    res.json({ message: 'Theatre owner assigned successfully', theatre });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// GET ALL USERS (admin only)
+const getUsers = async (req, res) => {
+  try {
+    const users = await User.find().select('-password').sort({ createdAt: -1 });
+    res.json(users);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // EXPORTS
 module.exports = {
   addTheatre,
@@ -153,5 +198,7 @@ module.exports = {
   getShows,
   getShowById,
   deleteShow,
-  migrateSeats
+  migrateSeats,
+  assignTheatreOwner,
+  getUsers
 };

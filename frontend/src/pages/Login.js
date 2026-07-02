@@ -20,7 +20,15 @@ function Login() {
       const res = await API.post("/auth/login", { email, password });
       localStorage.setItem("user", JSON.stringify(res.data.user));
       localStorage.setItem("token", res.data.token);
-      navigate("/home");
+      // Role-based redirect
+      const role = res.data.user?.role;
+      if (role === 'admin') {
+        navigate("/admin");
+      } else if (role === 'theatreOwner') {
+        navigate("/theatre-owner");
+      } else {
+        navigate("/home");
+      }
     } catch (error) {
       alert(error.response?.data?.message || "Login failed");
     } finally {

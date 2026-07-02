@@ -11,6 +11,7 @@ import Payment from './pages/Payment';
 import Success from './pages/Success';
 import Bookings from './pages/Bookings';
 import Revenue from './pages/Revenue';
+import TheatreOwnerDashboard from './pages/TheatreOwnerDashboard';
 
 import AdminDashboard from './pages/AdminDashboard';
 import AddMovie from './pages/AddMovie';
@@ -20,6 +21,7 @@ import AddTheatre from './pages/AddTheatre';
 
 import AdminRoute from './components/AdminRoute';
 import ProtectedRoute from './components/ProtectedRoute';
+import TheatreOwnerRoute from './components/TheatreOwnerRoute';
 
 function App() {
   return (
@@ -36,6 +38,8 @@ function App() {
           <Route path="/payment" element={<ProtectedRoute><Payment /></ProtectedRoute>} />
           <Route path="/success" element={<ProtectedRoute><Success /></ProtectedRoute>} />
           <Route path="/bookings" element={<ProtectedRoute><Bookings /></ProtectedRoute>} />
+
+          <Route path="/theatre-owner" element={<TheatreOwnerRoute><TheatreOwnerDashboard /></TheatreOwnerRoute>} />
 
           <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
           <Route path="/admin/add-movie" element={<AdminRoute><AddMovie /></AdminRoute>} />

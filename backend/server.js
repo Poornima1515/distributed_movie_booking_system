@@ -14,6 +14,10 @@ const adminRoutes = require('./routes/adminRoutes');
 const bookingRoutes = require('./routes/bookingRoutes');
 const paymentRoutes = require('./routes/paymentRoutes');
 const analyticsRoutes = require('./routes/analyticsRoutes');
+const theatreOwnerRoutes = require('./routes/theatreOwnerRoutes');
+const mealRoutes = require('./routes/mealRoutes');
+const loyaltyRoutes = require('./routes/loyaltyRoutes');
+const waitlistRoutes = require('./routes/waitlistRoutes');
 const seatSocket = require('./sockets/seatSocket');
 
 const app = express();
@@ -57,6 +61,10 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/theatre-owner', theatreOwnerRoutes);
+app.use('/api/meals', mealRoutes);
+app.use('/api/loyalty', loyaltyRoutes);
+app.use('/api/waitlist', waitlistRoutes);
 
 // TEST ROUTE
 app.get('/', (req, res) => {

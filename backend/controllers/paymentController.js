@@ -5,20 +5,62 @@ const Show = require("../models/Show");
 const Movie = require("../models/Movie");
 const Theatre = require("../models/Theatre");
 const User = require("../models/User");
+const Meal = require("../models/Meal");
 const redis = require("../config/redis");
 const { v4: uuidv4 } = require("uuid");
 const { sendTicketEmail } = require("../utils/emailService");
 
-// CREATE ORDER
+// ─── DYNAMIC PRICE CALCULATOR ─────────────────────────────────────────────────
+const getDynamicPrice = (basePrice, bookedCount, totalSeats) => {
+  if (totalSeats === 0) return basePrice;
+  const occupancy = bookedCount / totalSeats;
+  if (occupancy >= 0.9) return Math.round(basePrice * 1.5);
+  if (occupancy >= 0.75) return Math.round(basePrice * 1.25);
+  if (occupancy >= 0.5) return Math.round(basePrice * 1.1);
+  return basePrice;
+};
+
+// ─── GET SEAT CATEGORY PRICE ──────────────────────────────────────────────────
+const getSeatCategoryPrice = (show, seat) => {
+  if (!show.seatCategories || show.seatCategories.length === 0) return null;
+  for (const cat of show.seatCategories) {
+    if (cat.seats && cat.seats.includes(seat)) return cat.price;
+  }
+  return null;
+};
+
+// CREATE ORDER (with dynamic pricing)
 exports.createOrder = async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, showId, seats } = req.body;
+
+    let finalAmount = amount;
+
+    // If showId and seats provided, compute dynamic price
+    if (showId && seats && seats.length > 0) {
+      const show = await Show.findById(showId);
+      if (show) {
+        const totalSeats = show.seats?.length || 50;
+        const bookedCount = show.bookedSeats?.length || 0;
+
+        // Per-seat pricing with categories + dynamic multiplier
+        let ticketsTotal = 0;
+        for (const seat of seats) {
+          const catPrice = getSeatCategoryPrice(show, seat);
+          const base = catPrice || show.price || 200;
+          ticketsTotal += getDynamicPrice(base, bookedCount, totalSeats);
+        }
+        finalAmount = ticketsTotal;
+      }
+    }
+
     const order = await razorpay.orders.create({
-      amount: amount * 100,
+      amount: finalAmount * 100,
       currency: "INR",
       receipt: `receipt_${Date.now()}`
     });
-    res.status(200).json(order);
+
+    res.status(200).json({ ...order, dynamicPrice: Math.round(finalAmount / (seats?.length || 1)) });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -27,7 +69,15 @@ exports.createOrder = async (req, res) => {
 // VERIFY PAYMENT + SAVE BOOKING + SEND EMAIL
 exports.verifyPayment = async (req, res) => {
   try {
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, seats, showId, userId } = req.body;
+    const {
+      razorpay_order_id,
+      razorpay_payment_id,
+      razorpay_signature,
+      seats,
+      showId,
+      userId,
+      meals: mealsData // array of { mealId, quantity }
+    } = req.body;
 
     // VERIFY SIGNATURE
     const expectedSignature = crypto
@@ -44,6 +94,42 @@ exports.verifyPayment = async (req, res) => {
 
     const user = await User.findById(userId);
 
+    // CALCULATE TICKET AMOUNT with dynamic pricing + seat categories
+    const totalSeats = existingShow.seats?.length || 50;
+    const bookedCount = existingShow.bookedSeats?.length || 0;
+
+    let ticketsTotal = 0;
+    for (const seat of seats) {
+      const catPrice = getSeatCategoryPrice(existingShow, seat);
+      const base = catPrice || existingShow.price || 200;
+      ticketsTotal += getDynamicPrice(base, bookedCount, totalSeats);
+    }
+
+    // CALCULATE MEALS TOTAL
+    let mealsTotal = 0;
+    const processedMeals = [];
+
+    if (mealsData && mealsData.length > 0) {
+      for (const item of mealsData) {
+        if (!item.mealId || item.quantity <= 0) continue;
+        const meal = await Meal.findById(item.mealId);
+        if (meal && meal.isAvailable) {
+          const lineTotal = meal.price * item.quantity;
+          mealsTotal += lineTotal;
+          processedMeals.push({
+            meal: meal._id,
+            quantity: item.quantity,
+            price: meal.price
+          });
+        }
+      }
+    }
+
+    const totalAmount = ticketsTotal + mealsTotal;
+
+    // LOYALTY POINTS (1 point per ₹10)
+    const loyaltyPointsEarned = Math.floor(totalAmount / 10);
+
     // SAVE BOOKING
     const booking = await Booking.create({
       user: userId,
@@ -51,10 +137,13 @@ exports.verifyPayment = async (req, res) => {
       theatre: existingShow.theatre._id,
       show: showId,
       seats,
-      totalAmount: seats.length * (existingShow.price || 200),
+      totalAmount,
       bookingId: uuidv4(),
       userEmail: user?.email || '',
-      status: 'CONFIRMED'
+      status: 'CONFIRMED',
+      meals: processedMeals,
+      mealsTotal,
+      loyaltyPointsEarned
     });
 
     // UPDATE BOOKED SEATS (prevent duplicates)
@@ -66,12 +155,29 @@ exports.verifyPayment = async (req, res) => {
       await redis.del(`lock:${showId}:${seat}`);
     }
 
-    // EMIT SOCKET EVENTS FROM BACKEND — reliable regardless of frontend state
+    // UPDATE THEATRE REVENUE
+    const theatre = await Theatre.findById(existingShow.theatre._id);
+    if (theatre) {
+      const rate = theatre.commissionRate || 10;
+      const ownerRev = totalAmount * (1 - rate / 100);
+      const adminRev = totalAmount * (rate / 100);
+      theatre.ownerRevenue += ownerRev;
+      theatre.adminRevenue += adminRev;
+      theatre.totalRevenue += totalAmount;
+      await theatre.save();
+    }
+
+    // UPDATE USER LOYALTY POINTS + TOTAL SPENT
+    if (user) {
+      user.loyaltyPoints = (user.loyaltyPoints || 0) + loyaltyPointsEarned;
+      user.totalSpent = (user.totalSpent || 0) + totalAmount;
+      await user.save();
+    }
+
+    // EMIT SOCKET EVENTS FROM BACKEND
     const io = req.app.get('io');
     if (io) {
-      // Notify seat page users that seats are now booked
       io.to(showId).emit('bookingConfirmed', { showId, seats });
-      // Notify admin live feed
       io.to('admin-room').emit('newBookingActivity', {
         type: 'BOOKING',
         userName: user?.name || 'A user',
@@ -90,14 +196,20 @@ exports.verifyPayment = async (req, res) => {
         movie: existingShow.movie,
         theatre: existingShow.theatre,
         show: existingShow
-      }).catch(err => console.log('Email error:', err.message));
+      }).catch(err => console.error('Email error (ticket):', err.message));
     }
 
-    res.status(200).json({ success: true, message: "Booking Confirmed", booking });
+    res.status(200).json({
+      success: true,
+      message: "Booking Confirmed",
+      booking,
+      loyaltyPointsEarned
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
 };
+
 // DOWNLOAD PDF TICKET
 exports.downloadTicket = async (req, res) => {
   try {
@@ -109,14 +221,14 @@ exports.downloadTicket = async (req, res) => {
     const pdfBuffer = await generateTicketPDF(booking, booking.movie, booking.theatre, booking.show);
     res.set({
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `attachment; filename="CineVerse-Ticket-${booking.bookingId?.slice(0,8)}.pdf"`,
+      'Content-Disposition': `attachment; filename="CineVerse-Ticket-${booking.bookingId?.slice(0, 8)}.pdf"`,
       'Content-Length': pdfBuffer.length,
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Expose-Headers': 'Content-Disposition'
     });
     res.send(pdfBuffer);
   } catch (error) {
-    console.log('PDF error:', error.message);
+    console.error('PDF error:', error.message);
     res.status(500).json({ message: error.message });
   }
 };

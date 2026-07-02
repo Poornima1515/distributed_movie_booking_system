@@ -22,4 +22,11 @@ const adminOnly = (req, res, next) => {
   next();
 };
 
-module.exports = { protect, adminOnly };
+const theatreOwnerOnly = (req, res, next) => {
+  if (req.user?.role !== 'theatreOwner' && req.user?.role !== 'admin') {
+    return res.status(403).json({ message: 'Theatre owner access required' });
+  }
+  next();
+};
+
+module.exports = { protect, adminOnly, theatreOwnerOnly };
