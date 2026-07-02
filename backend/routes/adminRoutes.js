@@ -1,44 +1,27 @@
 ﻿const express = require('express');
-
 const router = express.Router();
 
 const {
-  addTheatre,
-  getTheatres,
-  deleteTheatre,
-  addShow,
-  getShows,
-  getShowById,
-  deleteShow,
-  migrateSeats,
-  assignTheatreOwner,
-  getUsers,
-  resetUserRole
+  addTheatre, getTheatres, deleteTheatre,
+  addShow, getShows, getShowById, deleteShow,
+  migrateSeats, assignTheatreOwner, getUsers, resetUserRole
 } = require('../controllers/adminController');
 
 const { protect, adminOnly } = require('../middleware/authMiddleware');
 
-// THEATRE ROUTES
-router.post('/theatre', addTheatre);
-router.get('/theatres', getTheatres);
-router.delete('/theatre/:id', deleteTheatre);
+// PUBLIC TO ALL LOGGED-IN USERS (used by theatre owner + user pages too)
+router.get('/theatres', protect, getTheatres);
+router.get('/shows', protect, getShows);
+router.get('/show/:id', protect, getShowById);
 
-// SHOW ROUTES
-router.post('/show', addShow);
-router.get('/shows', getShows);
-router.get('/show/:id', getShowById);
-router.delete('/show/:id', deleteShow);
-
-// MIGRATION ROUTE
-router.post('/migrate-seats', migrateSeats);
-
-// THEATRE OWNER ASSIGNMENT (admin only)
+// ADMIN ONLY ROUTES
+router.post('/theatre', protect, adminOnly, addTheatre);
+router.delete('/theatre/:id', protect, adminOnly, deleteTheatre);
+router.post('/show', protect, adminOnly, addShow);
+router.delete('/show/:id', protect, adminOnly, deleteShow);
+router.post('/migrate-seats', protect, adminOnly, migrateSeats);
 router.post('/assign-owner', protect, adminOnly, assignTheatreOwner);
-
-// GET ALL USERS (admin only)
 router.get('/users', protect, adminOnly, getUsers);
-
-// RESET USER ROLE (admin only)
 router.post('/reset-role', protect, adminOnly, resetUserRole);
 
 module.exports = router;

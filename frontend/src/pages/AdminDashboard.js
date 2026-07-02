@@ -12,7 +12,7 @@ const socket = io(SOCKET_URL, {
   transports: ['websocket', 'polling'],
   withCredentials: true
 });
-const TABS = ['Overview','Analytics','Live Feed','Movies','Shows','Theatres','Bookings'];
+const TABS = ['Overview','Analytics','Live Feed','Movies','Shows','Theatres','Bookings','Users'];
 
 function AdminDashboard() {
   const navigate = useNavigate();
@@ -117,7 +117,7 @@ function AdminDashboard() {
 
         <div style={{display:'flex',gap:'8px',marginBottom:'30px',flexWrap:'wrap'}}>
           {TABS.map(tab => (
-            <button key={tab} onClick={()=>{ setActiveTab(tab); if(tab==='Bookings'||tab==='Overview') fetchData(); if(tab==='Analytics') fetchAnalytics(); }} style={{padding:'9px 18px',borderRadius:'10px',border:activeTab===tab?'none':'1px solid rgba(255,255,255,0.06)',cursor:'pointer',fontWeight:'700',fontSize:'13px',background:activeTab===tab?'#ff004f':'#111827',color:activeTab===tab?'white':'#94a3b8',position:'relative'}}>
+            <button key={tab} onClick={()=>{ setActiveTab(tab); if(tab==='Bookings'||tab==='Overview') fetchData(); if(tab==='Analytics') fetchAnalytics(); if(tab==='Users') fetchUsers(); }} style={{padding:'9px 18px',borderRadius:'10px',border:activeTab===tab?'none':'1px solid rgba(255,255,255,0.06)',cursor:'pointer',fontWeight:'700',fontSize:'13px',background:activeTab===tab?'#ff004f':'#111827',color:activeTab===tab?'white':'#94a3b8',position:'relative'}}>
               {tab}
               {tab==='Live Feed' && liveActivity.length>0 && <span style={{position:'absolute',top:'-6px',right:'-6px',background:'#10b981',borderRadius:'50%',width:'16px',height:'16px',fontSize:'9px',display:'flex',alignItems:'center',justifyContent:'center',color:'white'}}>{liveActivity.length>9?'9+':liveActivity.length}</span>}
             </button>
@@ -410,6 +410,46 @@ function AdminDashboard() {
                       </tr>
                     ))}
                   </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {activeTab==='Users' && (
+          <div>
+            <h2 style={{marginBottom:'20px'}}>All Users ({users.length})</h2>
+            {users.length===0 ? <EmptyState message='No users yet.' /> : (
+              <div style={{overflowX:'auto'}}>
+                <table style={{width:'100%',borderCollapse:'collapse',fontSize:'14px'}}>
+                  <thead><tr style={{background:'#111827',color:'#94a3b8'}}>
+                    {['Name','Email','Role','Joined','Actions'].map(h=>(
+                      <th key={h} style={{padding:'12px 16px',textAlign:'left',fontWeight:'600',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>{h}</th>
+                    ))}
+                  </tr></thead>
+                  <tbody>{users.map(u=>(
+                    <tr key={u._id} style={{borderBottom:'1px solid rgba(255,255,255,0.04)'}}>
+                      <td style={tdStyle}>{u.name}</td>
+                      <td style={tdStyle}><span style={{color:'#94a3b8',fontSize:'13px'}}>{u.email}</span></td>
+                      <td style={tdStyle}>
+                        <span style={{background:u.role==='admin'?'rgba(255,0,79,0.15)':u.role==='theatreOwner'?'rgba(245,158,11,0.15)':'rgba(16,185,129,0.15)',border:`1px solid ${u.role==='admin'?'rgba(255,0,79,0.4)':u.role==='theatreOwner'?'rgba(245,158,11,0.4)':'rgba(16,185,129,0.4)'}`,color:u.role==='admin'?'#ff004f':u.role==='theatreOwner'?'#f59e0b':'#10b981',padding:'3px 10px',borderRadius:'20px',fontSize:'11px',fontWeight:'700'}}>{u.role}</span>
+                      </td>
+                      <td style={tdStyle}><span style={{color:'#64748b',fontSize:'12px'}}>{new Date(u.createdAt).toLocaleDateString('en-IN')}</span></td>
+                      <td style={tdStyle}>
+                        <select defaultValue={u.role} onChange={async (e)=>{
+                          const newRole=e.target.value;
+                          if(newRole===u.role) return;
+                          if(!window.confirm(`Change ${u.name}'s role to ${newRole}?`)) return;
+                          try{ await API.post('/admin/reset-role',{userId:u._id,role:newRole}); fetchUsers(); alert('Role updated!'); }
+                          catch(err){ alert(err.response?.data?.message||'Failed'); }
+                        }} style={{padding:'6px 10px',background:'#0a0f1e',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'6px',color:'white',fontSize:'12px',cursor:'pointer'}}>
+                          <option value="user">user</option>
+                          <option value="theatreOwner">theatreOwner</option>
+                          <option value="admin">admin</option>
+                        </select>
+                      </td>
+                    </tr>
+                  ))}</tbody>
                 </table>
               </div>
             )}

@@ -1,12 +1,16 @@
 ﻿const express = require('express');
 const router = express.Router();
 const { addMovie, getMovies, getMovieById, updateMovie, deleteMovie, getRecommendations } = require('../controllers/movieController');
+const { protect, adminOnly } = require('../middleware/authMiddleware');
 
-router.post('/add', addMovie);
-router.get('/', getMovies);
-router.get('/:id', getMovieById);
-router.put('/:id', updateMovie);
-router.delete('/:id', deleteMovie);
-router.get('/:id/recommendations', getRecommendations);
+// Public to all logged-in users
+router.get('/', protect, getMovies);
+router.get('/:id', protect, getMovieById);
+router.get('/:id/recommendations', protect, getRecommendations);
+
+// Admin only
+router.post('/add', protect, adminOnly, addMovie);
+router.put('/:id', protect, adminOnly, updateMovie);
+router.delete('/:id', protect, adminOnly, deleteMovie);
 
 module.exports = router;
