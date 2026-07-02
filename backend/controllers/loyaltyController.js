@@ -73,7 +73,7 @@ const redeemPoints = async (req, res) => {
     await user.save();
 
     res.json({
-      message: `Successfully redeemed ${pts} points for ₹${discount} discount. Use coupon LOYALTY${discount} at next booking (discount will be auto-applied).`,
+      message: `${pts} points redeemed! ₹${discount} will be deducted from your next booking. Apply points during seat selection at checkout.`,
       discount,
       remainingPoints: user.loyaltyPoints
     });

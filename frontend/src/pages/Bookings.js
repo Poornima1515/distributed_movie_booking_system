@@ -57,19 +57,13 @@ function Bookings() {
 
   const toggleQR = (id) => setExpandedId(expandedId === id ? null : id);
 
-  const handleRedeemPoints = async () => {
+  const handleRedeemPoints = () => {
     const pts = Number(redeemInput);
     if (!pts || pts < 100) return alert('Minimum 100 points required');
     if (pts % 100 !== 0) return alert('Must be in multiples of 100');
-    setRedeeming(true);
-    try {
-      const res = await API.post('/loyalty/redeem', { pointsToRedeem: pts });
-      alert(res.data.message);
-      setRedeemInput('');
-      fetchLoyalty();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Redemption failed');
-    } finally { setRedeeming(false); }
+    const discount = Math.floor(pts / 100) * 50;
+    alert(`ℹ️ How to use your ${pts} points (₹${discount} off):\n\n1. Go to Home → pick a movie\n2. Select your seats\n3. In the booking summary, find the 🌟 Loyalty Points section\n4. Enter ${pts} and click Apply\n5. ₹${discount} will be deducted from your total\n\nYour points are only deducted when you complete the booking.`);
+    setRedeemInput('');
   };
 
   const handleCancel = async (booking) => {
@@ -162,9 +156,9 @@ function Bookings() {
                 <span style={{ color: '#818cf8', fontSize: '13px', whiteSpace: 'nowrap' }}>
                   = ₹{redeemInput ? Math.floor(Number(redeemInput) / 100) * 50 : 0} off
                 </span>
-                <button onClick={handleRedeemPoints} disabled={redeeming || !redeemInput}
-                  style={{ padding: '8px 20px', background: redeeming ? '#334155' : '#6366f1', border: 'none', borderRadius: '8px', color: 'white', cursor: redeeming ? 'not-allowed' : 'pointer', fontWeight: '700', fontSize: '14px' }}>
-                  {redeeming ? '⏳ Redeeming...' : 'Redeem'}
+                <button onClick={handleRedeemPoints} disabled={!redeemInput}
+                  style={{ padding: '8px 20px', background: '#6366f1', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer', fontWeight: '700', fontSize: '14px' }}>
+                  How to use
                 </button>
               </div>
             )}
