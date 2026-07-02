@@ -600,6 +600,8 @@ function AdminDashboard() {
 
 const labelStyle = {display:'block',color:'#94a3b8',fontSize:'12px',fontWeight:'600',marginBottom:'4px'};
 const inputStyle = {width:'100%',padding:'8px 12px',background:'#0a0f1e',border:'1px solid rgba(255,255,255,0.08)',borderRadius:'8px',color:'white',fontSize:'13px',boxSizing:'border-box',outline:'none'};
+
+function StatCard({label,value,icon,color}) {
   return (<div style={{background:'#111827',padding:'24px',borderRadius:'16px',borderLeft:'4px solid '+color,border:'1px solid rgba(255,255,255,0.06)',borderLeftWidth:'4px',borderLeftColor:color}}>
     <span style={{fontSize:'28px'}}>{icon}</span>
     <p style={{color:'#64748b',fontSize:'12px',margin:'8px 0 4px',fontWeight:'600',textTransform:'uppercase',letterSpacing:'1px'}}>{label}</p>
