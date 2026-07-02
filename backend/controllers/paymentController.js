@@ -165,15 +165,17 @@ exports.verifyPayment = async (req, res) => {
     const finalAmount = Math.max(0, totalAmount - promoDiscount);
 
     // APPLY LOYALTY POINTS REDEMPTION
-    const { applyRedemption } = require('./loyaltyController');
     let loyaltyDiscount = 0;
-    let loyaltyPointsUsed = 0;
     if (loyaltyPointsToRedeem && Number(loyaltyPointsToRedeem) >= 100) {
-      loyaltyDiscount = await applyRedemption(userId, Number(loyaltyPointsToRedeem));
-      loyaltyPointsUsed = loyaltyDiscount > 0 ? Number(loyaltyPointsToRedeem) : 0;
+      const pts = Math.floor(Number(loyaltyPointsToRedeem) / 100) * 100;
+      if (user && user.loyaltyPoints >= pts) {
+        loyaltyDiscount = Math.floor(pts / 100) * 50;
+        // Deduct points now (booking is confirmed at this point since signature verified)
+        user.loyaltyPoints -= pts;
+      }
     }
 
-    const grandTotal = Math.max(0, finalAmount - loyaltyDiscount);
+    const grandTotal = Math.max(1, finalAmount - loyaltyDiscount);
 
     // LOYALTY POINTS (1 point per ₹10 of grand total)
     const loyaltyPointsEarned = Math.floor(grandTotal / 10);
@@ -218,8 +220,8 @@ exports.verifyPayment = async (req, res) => {
     }
 
     // UPDATE USER LOYALTY POINTS + TOTAL SPENT
-    // Note: loyaltyPointsUsed already deducted in applyRedemption above
     if (user) {
+      // loyaltyPoints already decremented above if redemption applied
       user.loyaltyPoints = (user.loyaltyPoints || 0) + loyaltyPointsEarned;
       user.totalSpent = (user.totalSpent || 0) + grandTotal;
       await user.save();

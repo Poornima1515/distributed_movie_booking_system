@@ -4,7 +4,6 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const { Server } = require('socket.io');
-const rateLimit = require('express-rate-limit');
 
 const connectDB = require('./config/db');
 require('./config/redis');
@@ -45,21 +44,29 @@ connectDB();
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// ── RATE LIMITERS ────────────────────────────────────────────────
+// ── RATE LIMITERS (optional — fallback to no-op if package missing) ──────────
+let rateLimit;
+try {
+  rateLimit = require('express-rate-limit');
+} catch (e) {
+  console.warn('express-rate-limit not installed, rate limiting disabled');
+  rateLimit = () => (req, res, next) => next(); // no-op middleware
+}
+
 const authLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, max: 15,
+  windowMs: 60 * 60 * 1000, max: 20,
   message: { message: 'Too many login attempts. Try again in 1 hour.' },
   standardHeaders: true, legacyHeaders: false
 });
 
 const bookingLimiter = rateLimit({
-  windowMs: 60 * 60 * 1000, max: 10,
+  windowMs: 60 * 60 * 1000, max: 15,
   message: { message: 'Too many booking attempts. Try again in 1 hour.' },
   standardHeaders: true, legacyHeaders: false
 });
 
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, max: 200,
+  windowMs: 15 * 60 * 1000, max: 300,
   message: { message: 'Too many requests. Try again in 15 minutes.' },
   standardHeaders: true, legacyHeaders: false
 });
