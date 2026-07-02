@@ -139,6 +139,9 @@ const deleteMyShow = async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 };
+
+// GET MY MEALS
+const getMyMeals = async (req, res) => {
   try {
     const theatre = await Theatre.findOne({ owner: req.user.id });
     if (!theatre) return res.status(404).json({ message: 'No theatre found' });
