@@ -394,7 +394,6 @@ function AdminDashboard() {
                     ) : (
                       <p style={{color:'#64748b',margin:'4px 0',fontSize:'13px'}}>👤 No owner assigned</p>
                     )}
-
                     {/* ASSIGN OWNER PANEL */}
                     {assigningTheatre === theatre._id ? (
                       <div style={{marginTop:'12px',padding:'14px',background:'rgba(255,255,255,0.03)',borderRadius:'10px',border:'1px solid rgba(255,255,255,0.08)'}}>
@@ -422,8 +421,15 @@ function AdminDashboard() {
                         </div>
                       </div>
                     ) : (
-                      <div style={{display:'flex',gap:'8px',marginTop:'14px'}}>
-                        <button onClick={()=>{setAssigningTheatre(theatre._id);setAssignForm({ownerId:theatre.owner?._id||'',commissionRate:theatre.commissionRate||10});}} style={{...editBtnStyle,flex:1}}>👤 Assign Owner</button>
+                      <div style={{display:'flex',gap:'8px',marginTop:'14px',flexWrap:'wrap'}}>
+                        <button onClick={()=>{setAssigningTheatre(theatre._id);setAssignForm({ownerId:theatre.owner?._id||'',commissionRate:theatre.commissionRate||10});}} style={{...editBtnStyle,flex:1}}>👤 {theatre.owner ? 'Change Owner' : 'Assign Owner'}</button>
+                        {theatre.owner && (
+                          <button onClick={async()=>{
+                            if(!window.confirm(`Remove owner from ${theatre.name}?`)) return;
+                            try{ await API.post('/admin/assign-owner',{theatreId:theatre._id,ownerId:null}); fetchData(); alert('Owner removed'); }
+                            catch(err){ alert(err.response?.data?.message||'Failed'); }
+                          }} style={{flex:1,padding:'8px',background:'rgba(245,158,11,0.1)',border:'1px solid rgba(245,158,11,0.3)',borderRadius:'8px',color:'#f59e0b',cursor:'pointer',fontWeight:'700',fontSize:'13px'}}>✕ Remove Owner</button>
+                        )}
                         <button onClick={()=>deleteTheatre(theatre._id)} style={deleteBtnStyle}>Delete</button>
                       </div>
                     )}

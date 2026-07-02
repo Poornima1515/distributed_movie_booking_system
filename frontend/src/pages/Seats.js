@@ -37,6 +37,12 @@ function Seats() {
   const [promoResult, setPromoResult] = useState(null);
   const [applyingPromo, setApplyingPromo] = useState(false);
 
+  // Loyalty redemption state
+  const [loyaltyData, setLoyaltyData] = useState(null);
+  const [loyaltyPointsInput, setLoyaltyPointsInput] = useState('');
+  const [loyaltyDiscount, setLoyaltyDiscount] = useState(0);
+  const [loyaltyPointsToRedeem, setLoyaltyPointsToRedeem] = useState(0);
+
   // Waitlist state
   const [joinedWaitlist, setJoinedWaitlist] = useState(false);
   const [joiningWaitlist, setJoiningWaitlist] = useState(false);
@@ -316,6 +322,11 @@ function Seats() {
     .filter(([, qty]) => qty > 0)
     .map(([mealId, quantity]) => ({ mealId, quantity }));
 
+  // Fetch loyalty points when component loads
+  useEffect(() => {
+    API.get('/loyalty/points').then(res => setLoyaltyData(res.data)).catch(() => {});
+  }, []);
+
   // ─── PROMO CODE ───────────────────────────────────────────────
   const handleApplyPromo = async () => {
     if (!promoInput.trim()) return;
@@ -328,6 +339,19 @@ function Seats() {
       alert(err.response?.data?.message || 'Invalid promo code');
     } finally { setApplyingPromo(false); }
   };
+
+  // ─── LOYALTY POINTS PREVIEW ───────────────────────────────────
+  const handlePreviewLoyalty = async () => {
+    const pts = Number(loyaltyPointsInput);
+    if (!pts || pts < 100) return alert('Minimum 100 points');
+    try {
+      const res = await API.post('/loyalty/preview', { pointsToRedeem: pts });
+      setLoyaltyDiscount(res.data.discount);
+      setLoyaltyPointsToRedeem(pts);
+    } catch (err) { alert(err.response?.data?.message || 'Failed'); }
+  };
+
+  const handleClearLoyalty = () => { setLoyaltyDiscount(0); setLoyaltyPointsToRedeem(0); setLoyaltyPointsInput(''); };
 
   // ─── WAITLIST ─────────────────────────────────────────────────
   const handleJoinWaitlist = async () => {
@@ -359,7 +383,7 @@ function Seats() {
     try {
       const { data: order } = await axios.post(
         `${API_BASE}/payment/create-order`,
-        { amount: totalPrice, showId, seats: mySeats }
+        { amount: totalPrice, showId, seats: mySeats, promoCode: promoResult?.code || '', loyaltyDiscount }
       );
 
       const options = {
@@ -379,7 +403,8 @@ function Seats() {
                 showId,
                 userId: currentUserId,
                 meals: mealsPayload,
-                promoCode: promoResult?.code || ''
+                promoCode: promoResult?.code || '',
+                loyaltyPointsToRedeem
               }
             );
             if (verifyRes.data.success) {
@@ -414,7 +439,7 @@ function Seats() {
   // ─── DERIVED VALUES ───────────────────────────────────────────
   const ticketPrice = show?.price || 200;
   const ticketsSubtotal = mySeats.length * ticketPrice;
-  const totalPrice = ticketsSubtotal + mealsTotal - (promoResult?.discount || 0);
+  const totalPrice = Math.max(0, ticketsSubtotal + mealsTotal - (promoResult?.discount || 0) - loyaltyDiscount);
 
   const displaySeats =
     show?.seats?.length > 0
@@ -572,27 +597,40 @@ function Seats() {
             {/* PROMO CODE */}
             <div style={{ marginBottom: '16px' }}>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <input
-                  placeholder="Promo code (optional)"
-                  value={promoInput}
+                <input placeholder="Promo code (optional)" value={promoInput}
                   onChange={e => { setPromoInput(e.target.value.toUpperCase()); setPromoResult(null); }}
-                  style={{ flex: 1, padding: '8px 12px', background: '#0a0f1e', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: 'white', fontSize: '14px', outline: 'none' }}
-                />
+                  style={{ flex: 1, padding: '8px 12px', background: '#0a0f1e', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '8px', color: 'white', fontSize: '14px', outline: 'none' }} />
                 <button onClick={handleApplyPromo} disabled={applyingPromo || !promoInput}
                   style={{ padding: '8px 16px', background: 'rgba(16,185,129,0.15)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>
                   {applyingPromo ? '...' : 'Apply'}
                 </button>
-                {promoResult && (
-                  <button onClick={() => { setPromoResult(null); setPromoInput(''); }}
-                    style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>✕</button>
+                {promoResult && <button onClick={() => { setPromoResult(null); setPromoInput(''); }}
+                  style={{ padding: '8px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '8px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>✕</button>}
+              </div>
+              {promoResult && <div style={{ marginTop: '8px', padding: '8px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', fontSize: '13px', fontWeight: '600' }}>✓ {promoResult.code} — ₹{promoResult.discount} off!</div>}
+            </div>
+
+            {/* LOYALTY POINTS REDEMPTION */}
+            {loyaltyData && (loyaltyData.loyaltyPoints || 0) >= 100 && (
+              <div style={{ marginBottom: '16px', background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)', borderRadius: '10px', padding: '12px 14px' }}>
+                <p style={{ color: '#818cf8', fontSize: '13px', fontWeight: '700', margin: '0 0 8px' }}>🌟 You have {loyaltyData.loyaltyPoints} points (worth ₹{Math.floor(loyaltyData.loyaltyPoints/100)*50})</p>
+                {loyaltyDiscount > 0 ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '700' }}>✓ ₹{loyaltyDiscount} loyalty discount applied ({loyaltyPointsToRedeem} pts)</span>
+                    <button onClick={handleClearLoyalty} style={{ padding: '4px 10px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: '6px', color: '#ef4444', cursor: 'pointer', fontSize: '12px' }}>Remove</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <input type="number" step="100" min="100" max={loyaltyData.loyaltyPoints} placeholder="Points to use (min 100)"
+                      value={loyaltyPointsInput} onChange={e => setLoyaltyPointsInput(e.target.value)}
+                      style={{ flex: 1, padding: '7px 10px', background: '#0a0f1e', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', color: 'white', fontSize: '13px', outline: 'none' }} />
+                    <span style={{ color: '#818cf8', fontSize: '12px', whiteSpace: 'nowrap' }}>= ₹{loyaltyPointsInput ? Math.floor(Number(loyaltyPointsInput)/100)*50 : 0} off</span>
+                    <button onClick={handlePreviewLoyalty} disabled={!loyaltyPointsInput}
+                      style={{ padding: '7px 14px', background: 'rgba(99,102,241,0.15)', border: '1px solid rgba(99,102,241,0.3)', borderRadius: '8px', color: '#818cf8', cursor: 'pointer', fontWeight: '700', fontSize: '13px' }}>Apply</button>
+                  </div>
                 )}
               </div>
-              {promoResult && (
-                <div style={{ marginTop: '8px', padding: '8px 12px', background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.3)', borderRadius: '8px', color: '#10b981', fontSize: '13px', fontWeight: '600' }}>
-                  ✓ {promoResult.code} applied — ₹{promoResult.discount} off!
-                </div>
-              )}
-            </div>
+            )}
 
             {/* MEAL ADD-ONS */}
             {availableMeals.length > 0 && (
@@ -633,9 +671,10 @@ function Seats() {
                   {mySeats.length} seat{mySeats.length > 1 ? 's' : ''} × Rs.{ticketPrice}
                   {mealsTotal > 0 && ` + meals ₹${mealsTotal}`}
                   {promoResult && <span style={{ color: '#10b981' }}> − ₹{promoResult.discount} promo</span>}
+                  {loyaltyDiscount > 0 && <span style={{ color: '#818cf8' }}> − ₹{loyaltyDiscount} loyalty</span>}
                 </span>
                 <span style={{ color: 'white', fontWeight: '800', fontSize: '20px', marginLeft: '12px' }}>
-                  = Rs.{totalPrice}
+                  = Rs.{Math.max(0, totalPrice)}
                 </span>
               </div>
               <button

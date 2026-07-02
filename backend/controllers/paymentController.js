@@ -31,21 +31,18 @@ const getSeatCategoryPrice = (show, seat) => {
   return null;
 };
 
-// CREATE ORDER (with dynamic pricing)
+// CREATE ORDER (with dynamic pricing + discounts)
 exports.createOrder = async (req, res) => {
   try {
-    const { amount, showId, seats } = req.body;
+    const { amount, showId, seats, promoCode, loyaltyDiscount: loyaltyDiscountReq } = req.body;
 
     let finalAmount = amount;
 
-    // If showId and seats provided, compute dynamic price
     if (showId && seats && seats.length > 0) {
       const show = await Show.findById(showId);
       if (show) {
         const totalSeats = show.seats?.length || 50;
         const bookedCount = show.bookedSeats?.length || 0;
-
-        // Per-seat pricing with categories + dynamic multiplier
         let ticketsTotal = 0;
         for (const seat of seats) {
           const catPrice = getSeatCategoryPrice(show, seat);
@@ -55,6 +52,25 @@ exports.createOrder = async (req, res) => {
         finalAmount = ticketsTotal;
       }
     }
+
+    // Apply promo discount to order amount
+    if (promoCode) {
+      const promo = await PromoCode.findOne({ code: promoCode.toUpperCase(), isActive: true });
+      if (promo && promo.usedCount < promo.maxUses && (!promo.expiresAt || new Date() < promo.expiresAt) && finalAmount >= promo.minAmount) {
+        const disc = promo.discountType === 'percentage'
+          ? Math.round(finalAmount * promo.discountValue / 100)
+          : Math.min(promo.discountValue, finalAmount);
+        finalAmount = Math.max(0, finalAmount - disc);
+      }
+    }
+
+    // Apply loyalty discount
+    if (loyaltyDiscountReq && Number(loyaltyDiscountReq) > 0) {
+      finalAmount = Math.max(0, finalAmount - Number(loyaltyDiscountReq));
+    }
+
+    // Razorpay minimum is ₹1
+    finalAmount = Math.max(1, finalAmount);
 
     const order = await razorpay.orders.create({
       amount: finalAmount * 100,
@@ -79,7 +95,8 @@ exports.verifyPayment = async (req, res) => {
       showId,
       userId,
       meals: mealsData,
-      promoCode: promoCodeInput
+      promoCode: promoCodeInput,
+      loyaltyPointsToRedeem
     } = req.body;
 
     // VERIFY SIGNATURE
@@ -147,8 +164,19 @@ exports.verifyPayment = async (req, res) => {
 
     const finalAmount = Math.max(0, totalAmount - promoDiscount);
 
-    // LOYALTY POINTS (1 point per ₹10 of final amount)
-    const loyaltyPointsEarned = Math.floor(finalAmount / 10);
+    // APPLY LOYALTY POINTS REDEMPTION
+    const { applyRedemption } = require('./loyaltyController');
+    let loyaltyDiscount = 0;
+    let loyaltyPointsUsed = 0;
+    if (loyaltyPointsToRedeem && Number(loyaltyPointsToRedeem) >= 100) {
+      loyaltyDiscount = await applyRedemption(userId, Number(loyaltyPointsToRedeem));
+      loyaltyPointsUsed = loyaltyDiscount > 0 ? Number(loyaltyPointsToRedeem) : 0;
+    }
+
+    const grandTotal = Math.max(0, finalAmount - loyaltyDiscount);
+
+    // LOYALTY POINTS (1 point per ₹10 of grand total)
+    const loyaltyPointsEarned = Math.floor(grandTotal / 10);
 
     // SAVE BOOKING
     const booking = await Booking.create({
@@ -157,7 +185,7 @@ exports.verifyPayment = async (req, res) => {
       theatre: existingShow.theatre._id,
       show: showId,
       seats,
-      totalAmount: finalAmount,
+      totalAmount: grandTotal,
       bookingId: uuidv4(),
       userEmail: user?.email || '',
       status: 'CONFIRMED',
@@ -165,7 +193,7 @@ exports.verifyPayment = async (req, res) => {
       mealsTotal,
       loyaltyPointsEarned,
       promoCode: appliedPromoCode,
-      promoDiscount
+      promoDiscount: promoDiscount + loyaltyDiscount
     });
 
     // UPDATE BOOKED SEATS (prevent duplicates)
@@ -177,27 +205,27 @@ exports.verifyPayment = async (req, res) => {
       await redis.del(`lock:${showId}:${seat}`);
     }
 
-    // UPDATE THEATRE REVENUE (use finalAmount after promo)
+    // UPDATE THEATRE REVENUE (use grandTotal after all discounts)
     const theatre = await Theatre.findById(existingShow.theatre._id);
     if (theatre) {
       const rate = theatre.commissionRate || 10;
-      const ownerRev = finalAmount * (1 - rate / 100);
-      const adminRev = finalAmount * (rate / 100);
+      const ownerRev = grandTotal * (1 - rate / 100);
+      const adminRev = grandTotal * (rate / 100);
       theatre.ownerRevenue += ownerRev;
       theatre.adminRevenue += adminRev;
-      theatre.totalRevenue += finalAmount;
+      theatre.totalRevenue += grandTotal;
       await theatre.save();
     }
 
     // UPDATE USER LOYALTY POINTS + TOTAL SPENT
+    // Note: loyaltyPointsUsed already deducted in applyRedemption above
     if (user) {
       user.loyaltyPoints = (user.loyaltyPoints || 0) + loyaltyPointsEarned;
-      user.totalSpent = (user.totalSpent || 0) + finalAmount;
+      user.totalSpent = (user.totalSpent || 0) + grandTotal;
       await user.save();
     }
 
-    // AUDIT LOG
-    logAction({ userId, userName: user?.name, action: 'CREATE_BOOKING', resource: 'Booking', resourceId: booking._id.toString(), details: { seats, totalAmount: finalAmount, movie: existingShow.movie?.title }, ip: req.ip });
+    logAction({ userId, userName: user?.name, action: 'CREATE_BOOKING', resource: 'Booking', resourceId: booking._id.toString(), details: { seats, totalAmount: grandTotal, promoDiscount, loyaltyDiscount, movie: existingShow.movie?.title }, ip: req.ip });
 
     // EMIT SOCKET EVENTS FROM BACKEND
     const io = req.app.get('io');
@@ -230,7 +258,8 @@ exports.verifyPayment = async (req, res) => {
       booking,
       loyaltyPointsEarned,
       promoDiscount,
-      finalAmount
+      loyaltyDiscount,
+      finalAmount: grandTotal
     });
   } catch (error) {
     res.status(500).json({ message: error.message });

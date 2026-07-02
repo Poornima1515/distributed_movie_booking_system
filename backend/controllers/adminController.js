@@ -153,28 +153,44 @@ const assignTheatreOwner = async (req, res) => {
     const theatre = await Theatre.findById(theatreId);
     if (!theatre) return res.status(404).json({ message: 'Theatre not found' });
 
-    if (ownerId) {
-      const owner = await User.findById(ownerId);
-      if (!owner) return res.status(404).json({ message: 'User not found' });
-
-      // NEVER change role if user is already admin
-      if (owner.role === 'admin') {
-        return res.status(400).json({ message: 'Cannot assign admin as theatre owner. Use a regular user account.' });
+    // REMOVE OWNER case
+    if (!ownerId) {
+      // Reset previous owner's role back to 'user'
+      if (theatre.owner) {
+        const prevOwner = await User.findById(theatre.owner);
+        if (prevOwner && prevOwner.role === 'theatreOwner') {
+          prevOwner.role = 'user';
+          await prevOwner.save();
+        }
       }
-
-      // Promote user to theatreOwner role
-      owner.role = 'theatreOwner';
-      await owner.save();
-
-      theatre.owner = ownerId;
-    } else {
       theatre.owner = null;
+      if (commissionRate !== undefined) theatre.commissionRate = commissionRate;
+      await theatre.save();
+      return res.json({ message: 'Theatre owner removed', theatre });
     }
 
-    if (commissionRate !== undefined) {
-      theatre.commissionRate = commissionRate;
+    // ASSIGN OWNER case
+    const owner = await User.findById(ownerId);
+    if (!owner) return res.status(404).json({ message: 'User not found' });
+    if (owner.role === 'admin') return res.status(400).json({ message: 'Cannot assign admin as theatre owner.' });
+
+    // Check 1 owner per theatre: user must not already own another theatre
+    const existingTheatre = await Theatre.findOne({ owner: ownerId, _id: { $ne: theatreId } });
+    if (existingTheatre) return res.status(400).json({ message: `${owner.name} already owns "${existingTheatre.name}". Remove them first.` });
+
+    // Reset previous owner if different
+    if (theatre.owner && String(theatre.owner) !== String(ownerId)) {
+      const prevOwner = await User.findById(theatre.owner);
+      if (prevOwner && prevOwner.role === 'theatreOwner') {
+        prevOwner.role = 'user';
+        await prevOwner.save();
+      }
     }
 
+    owner.role = 'theatreOwner';
+    await owner.save();
+    theatre.owner = ownerId;
+    if (commissionRate !== undefined) theatre.commissionRate = commissionRate;
     await theatre.save();
     await theatre.populate('owner', 'name email role');
 

@@ -7,7 +7,6 @@ const getPoints = async (req, res) => {
     const user = await User.findById(req.user.id).select('name email loyaltyPoints totalSpent');
     if (!user) return res.status(404).json({ message: 'User not found' });
 
-    // Also get recent bookings to show points earned per booking
     const recentBookings = await Booking.find({ user: req.user.id, status: 'CONFIRMED' })
       .select('bookingId totalAmount loyaltyPointsEarned bookedAt')
       .populate('movie', 'title')
@@ -17,7 +16,7 @@ const getPoints = async (req, res) => {
     res.json({
       loyaltyPoints: user.loyaltyPoints,
       totalSpent: user.totalSpent,
-      pointsValue: Math.floor(user.loyaltyPoints / 100) * 50, // ₹50 per 100 points
+      pointsValue: Math.floor(user.loyaltyPoints / 100) * 50,
       recentBookings
     });
   } catch (error) {
@@ -25,35 +24,56 @@ const getPoints = async (req, res) => {
   }
 };
 
-// REDEEM POINTS (100 points = ₹50 off)
-const redeemPoints = async (req, res) => {
+// PREVIEW REDEMPTION - returns discount amount without deducting
+// Used at booking time to show how much discount user will get
+const previewRedemption = async (req, res) => {
   try {
     const { pointsToRedeem } = req.body;
-
-    if (!pointsToRedeem || pointsToRedeem < 100) {
-      return res.status(400).json({ message: 'Minimum 100 points required to redeem' });
-    }
-
-    if (pointsToRedeem % 100 !== 0) {
-      return res.status(400).json({ message: 'Points must be in multiples of 100' });
-    }
+    const pts = Number(pointsToRedeem);
+    if (!pts || pts < 100) return res.status(400).json({ message: 'Minimum 100 points required' });
+    if (pts % 100 !== 0) return res.status(400).json({ message: 'Must be in multiples of 100' });
 
     const user = await User.findById(req.user.id);
     if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.loyaltyPoints < pts) return res.status(400).json({ message: `You only have ${user.loyaltyPoints} points` });
 
-    if (user.loyaltyPoints < pointsToRedeem) {
-      return res.status(400).json({
-        message: `Insufficient points. You have ${user.loyaltyPoints} points.`
-      });
-    }
+    const discount = Math.floor(pts / 100) * 50;
+    res.json({ valid: true, pointsToRedeem: pts, discount, remainingPoints: user.loyaltyPoints - pts });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
 
-    const discount = Math.floor(pointsToRedeem / 100) * 50; // ₹50 per 100 points
+// APPLY REDEMPTION AT BOOKING - deducts points, called from payment flow
+const applyRedemption = async (userId, pointsToRedeem) => {
+  if (!pointsToRedeem || pointsToRedeem < 100) return 0;
+  const pts = Math.floor(pointsToRedeem / 100) * 100; // round down to nearest 100
+  const user = await User.findById(userId);
+  if (!user || user.loyaltyPoints < pts) return 0;
+  const discount = Math.floor(pts / 100) * 50;
+  user.loyaltyPoints -= pts;
+  await user.save();
+  return discount;
+};
 
-    user.loyaltyPoints -= pointsToRedeem;
+// STANDALONE REDEEM (for Bookings page - just converts points to discount info)
+const redeemPoints = async (req, res) => {
+  try {
+    const { pointsToRedeem } = req.body;
+    const pts = Number(pointsToRedeem);
+    if (!pts || pts < 100) return res.status(400).json({ message: 'Minimum 100 points required' });
+    if (pts % 100 !== 0) return res.status(400).json({ message: 'Points must be in multiples of 100' });
+
+    const user = await User.findById(req.user.id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (user.loyaltyPoints < pts) return res.status(400).json({ message: `Insufficient points. You have ${user.loyaltyPoints} points.` });
+
+    const discount = Math.floor(pts / 100) * 50;
+    user.loyaltyPoints -= pts;
     await user.save();
 
     res.json({
-      message: `Successfully redeemed ${pointsToRedeem} points for ₹${discount} discount`,
+      message: `Successfully redeemed ${pts} points for ₹${discount} discount. Use coupon LOYALTY${discount} at next booking (discount will be auto-applied).`,
       discount,
       remainingPoints: user.loyaltyPoints
     });
@@ -62,4 +82,4 @@ const redeemPoints = async (req, res) => {
   }
 };
 
-module.exports = { getPoints, redeemPoints };
+module.exports = { getPoints, redeemPoints, previewRedemption, applyRedemption };
