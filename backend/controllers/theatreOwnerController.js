@@ -93,8 +93,52 @@ const getMyBookings = async (req, res) => {
   }
 };
 
-// GET MY MEALS
-const getMyMeals = async (req, res) => {
+// ADD MY SHOW
+const addMyShow = async (req, res) => {
+  try {
+    const theatre = await Theatre.findOne({ owner: req.user.id });
+    if (!theatre) return res.status(404).json({ message: 'No theatre found' });
+
+    const { movie, showTime, price } = req.body;
+    if (!movie || !showTime || !price) {
+      return res.status(400).json({ message: 'movie, showTime and price are required' });
+    }
+
+    // Auto-generate 50 seats
+    const seats = [];
+    for (const row of ['A','B','C','D','E']) {
+      for (let i = 1; i <= 10; i++) seats.push(`${row}${i}`);
+    }
+
+    const show = await Show.create({
+      movie,
+      theatre: theatre._id,
+      showTime,
+      price,
+      seats,
+      bookedSeats: []
+    });
+    await show.populate('movie');
+    await show.populate('theatre');
+    res.status(201).json(show);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// DELETE MY SHOW
+const deleteMyShow = async (req, res) => {
+  try {
+    const theatre = await Theatre.findOne({ owner: req.user.id });
+    if (!theatre) return res.status(404).json({ message: 'No theatre found' });
+
+    const show = await Show.findOneAndDelete({ _id: req.params.id, theatre: theatre._id });
+    if (!show) return res.status(404).json({ message: 'Show not found or not yours' });
+    res.json({ message: 'Show deleted' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
   try {
     const theatre = await Theatre.findOne({ owner: req.user.id });
     if (!theatre) return res.status(404).json({ message: 'No theatre found' });
@@ -154,6 +198,8 @@ const deleteMyMeal = async (req, res) => {
 module.exports = {
   getMyTheatre,
   getMyShows,
+  addMyShow,
+  deleteMyShow,
   getMyRevenue,
   getMyBookings,
   getMyMeals,

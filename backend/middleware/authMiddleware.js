@@ -16,6 +16,7 @@ const protect = (req, res, next) => {
 };
 
 const adminOnly = (req, res, next) => {
+  // Admin role ALWAYS has admin access regardless of theatreOwner assignment
   if (req.user?.role !== 'admin') {
     return res.status(403).json({ message: 'Admin access required' });
   }
@@ -23,7 +24,7 @@ const adminOnly = (req, res, next) => {
 };
 
 const theatreOwnerOnly = (req, res, next) => {
-  if (req.user?.role !== 'theatreOwner' && req.user?.role !== 'admin') {
+  if (req.user?.role !== 'theatreOwner') {
     return res.status(403).json({ message: 'Theatre owner access required' });
   }
   next();

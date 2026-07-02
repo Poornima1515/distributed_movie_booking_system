@@ -157,6 +157,11 @@ const assignTheatreOwner = async (req, res) => {
       const owner = await User.findById(ownerId);
       if (!owner) return res.status(404).json({ message: 'User not found' });
 
+      // NEVER change role if user is already admin
+      if (owner.role === 'admin') {
+        return res.status(400).json({ message: 'Cannot assign admin as theatre owner. Use a regular user account.' });
+      }
+
       // Promote user to theatreOwner role
       owner.role = 'theatreOwner';
       await owner.save();
@@ -189,6 +194,21 @@ const getUsers = async (req, res) => {
   }
 };
 
+// RESET USER ROLE (admin only) — fix accidental role changes
+const resetUserRole = async (req, res) => {
+  try {
+    const { userId, role } = req.body;
+    if (!['user', 'admin', 'theatreOwner'].includes(role)) {
+      return res.status(400).json({ message: 'Invalid role' });
+    }
+    const user = await User.findByIdAndUpdate(userId, { role }, { new: true }).select('-password');
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.json({ message: `Role updated to ${role}`, user });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 // EXPORTS
 module.exports = {
   addTheatre,
@@ -200,5 +220,6 @@ module.exports = {
   deleteShow,
   migrateSeats,
   assignTheatreOwner,
-  getUsers
+  getUsers,
+  resetUserRole
 };

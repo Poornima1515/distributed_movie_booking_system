@@ -4,6 +4,8 @@ const { protect, theatreOwnerOnly } = require('../middleware/authMiddleware');
 const {
   getMyTheatre,
   getMyShows,
+  addMyShow,
+  deleteMyShow,
   getMyRevenue,
   getMyBookings,
   getMyMeals,
@@ -16,6 +18,8 @@ router.use(protect, theatreOwnerOnly);
 
 router.get('/theatre', getMyTheatre);
 router.get('/shows', getMyShows);
+router.post('/shows', addMyShow);
+router.delete('/shows/:id', deleteMyShow);
 router.get('/revenue', getMyRevenue);
 router.get('/bookings', getMyBookings);
 router.get('/meals', getMyMeals);

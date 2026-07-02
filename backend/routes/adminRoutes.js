@@ -12,7 +12,8 @@ const {
   deleteShow,
   migrateSeats,
   assignTheatreOwner,
-  getUsers
+  getUsers,
+  resetUserRole
 } = require('../controllers/adminController');
 
 const { protect, adminOnly } = require('../middleware/authMiddleware');
@@ -36,5 +37,8 @@ router.post('/assign-owner', protect, adminOnly, assignTheatreOwner);
 
 // GET ALL USERS (admin only)
 router.get('/users', protect, adminOnly, getUsers);
+
+// RESET USER ROLE (admin only)
+router.post('/reset-role', protect, adminOnly, resetUserRole);
 
 module.exports = router;
